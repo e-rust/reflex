@@ -1,0 +1,20 @@
+[package]
+name = "reflex-host"
+description = "Lado controlado: aceita conexões, autentica, captura e injeta input"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reflex-proto.workspace = true
+reflex-auth.workspace = true
+reflex-net.workspace = true
+reflex-media.workspace = true
+reflex-platform.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+log.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "net"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }

@@ -1,0 +1,3 @@
+// Recursos do reflex.exe: o manifesto (id 1 = CREATEPROCESS_MANIFEST_RESOURCE_ID, tipo 24 = RT_MANIFEST).
+#define RT_MANIFEST 24
+1 RT_MANIFEST "reflex.manifest"

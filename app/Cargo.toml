@@ -1,0 +1,32 @@
+[package]
+name = "reflex"
+description = "Reflex: controle remoto de tela (um exe, vários modos — §5.3)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "reflex"
+build = "build.rs"
+
+[[bin]]
+name = "reflex"
+path = "src/main.rs"
+
+[dependencies]
+reflex-proto.workspace = true
+reflex-auth.workspace = true
+reflex-net.workspace = true
+reflex-media.workspace = true
+reflex-platform.workspace = true
+reflex-host.workspace = true
+reflex-viewer.workspace = true
+reflex-ui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+log = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+windows-service.workspace = true
+png = "0.18"
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_RemoteDesktop", "Win32_System_Threading"] }
+
+[build-dependencies]
+embed-resource = "3"

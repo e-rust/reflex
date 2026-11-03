@@ -1,0 +1,5 @@
+# CRT do MSVC embutido no exe: o reflex.exe roda num Windows limpo, sem o
+# pacote redistribuível do Visual C++ (medido numa VM Windows 11 Home: sem
+# isto o exe nem abre — 0xC0000135, vcruntime140.dll ausente).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

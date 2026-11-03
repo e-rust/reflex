@@ -1,0 +1,8 @@
+# Fontes sempre com LF (edições feitas no Windows tendem a gravar CRLF).
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.dll binary
+*.png binary
+# Pacote de driver assinado: o .cat tem o hash exato do .inf, nada de converter fim de linha.
+third_party/vdd/*.inf binary
+third_party/vdd/*.cat binary
