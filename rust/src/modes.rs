@@ -126,6 +126,7 @@ fn print_help() {
         [--copiar=TEXTO]                  copia TEXTO pro clipboard de lá
         [--medir-imagem]                  o host mede também a imagem sem perda (lz4, zstd)
         [--codec=h264|hevc|av1|sem-perda] fixa o codec (padrão: o automático)
+        [--banda=KB/s]                    lê o vídeo devagar, como uma rede lenta
 
 Os modos --service, --agent e --user são iniciados pelo próprio Reflex.",
         env!("CARGO_PKG_VERSION")

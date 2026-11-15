@@ -64,6 +64,12 @@ pub fn run(all: &[String]) -> Result<(), String> {
     let copy = all.iter().find_map(|a| a.strip_prefix("--copiar=")).map(str::to_string);
     // --medir-imagem: o host mede também a imagem sem perda (o híbrido) e põe no relatório.
     let measure = all.iter().any(|a| a == "--medir-imagem");
+    // --banda=KB/s: lê o vídeo devagar, como uma rede lenta (testa o híbrido).
+    if let Some(v) = all.iter().find_map(|a| a.strip_prefix("--banda=")) {
+        let kbps: u64 = v.parse().map_err(|_| format!("--banda={v}: use KB/s (ex.: 200)"))?;
+        crate::viewer::client::READ_LIMIT_KBPS.store(kbps, std::sync::atomic::Ordering::Relaxed);
+        println!("vídeo lido a no máximo {kbps} KB/s");
+    }
     // --codec=h264|hevc|av1|sem-perda: fixa o codec (padrão: o automático).
     let codec = match all.iter().find_map(|a| a.strip_prefix("--codec=")) {
         None | Some("auto") => CodecChoice::Auto,

@@ -71,13 +71,39 @@ quadro.
 - O menu Iniciar manda só imagens novas (o H.264 completa com quadros de
   refino); o número de imagens novas é o mesmo.
 
-### Etapa 2 — troca automática pela banda
+### Etapa 2 — troca automática pela banda (feita)
 
-- O motor mede quanto a fila de envio aguenta (o `InFlight` que já existe dá
-  o ritmo). Se o sem perda passa do orçamento por alguns quadros, troca pro
-  H.264; quando a tela acalma, volta pro sem perda com um keyframe sem perda
-  (a imagem do H.264 tem perda, o delta não serve em cima dela).
-- O viewer já troca de decoder quando o codec do quadro muda.
+`host/hybrid.rs` (pura, com testes) e o motor:
+
+- **Fila curta no transporte** (`net/quic.rs`): o padrão do quinn (1,25 MB por
+  stream) escondia a rede lenta — o quadro "saía" na hora e ficava na fila;
+  com o viewer lendo a 100 KB/s a imagem chegava 12 s atrasada. Com 256 KB a
+  escrita trava logo e o motor descarta quadros em vez de acumular.
+- **Sem perda → vídeo:** muitos quadros atrasados (mais de 100 ms pra sair),
+  um travado (mais de 1 s), ou um quadro sem perda que levaria mais de 250 ms
+  no link medido (nem sai).
+- **Vídeo → sem perda:** o motor estima quanto o sem perda ocuparia (zstd
+  direto e do delta, o menor); cabendo em metade da banda medida, volta.
+- **Começo:** em H.264; sem a rede segurar nenhum quadro em 1 s, sem perda.
+- Só no automático (sem perda escolhido por falta de encoder de placa, e os
+  dois lados com H.264); pedido explícito fica no codec pedido.
+- `reflex --probe --banda=KB/s` lê o vídeo devagar (testa sem rede lenta).
+
+#### Resultado da etapa 2 (VM, 15/11/2026)
+
+| Cenário | O que acontece | Captura→chegada p50 / p90 |
+|---|---|---|
+| Arrasto, rede rápida | H.264 por 1 s, depois sem perda | 1,4 / 4,7 ms |
+| Digitação, rede rápida | idem; tecla→tela p50 33 ms, p90 61 ms | — |
+| Menu Iniciar a 300 KB/s | sem perda, um keyframe lento (4 s), H.264 de vez | 31 / 367 ms |
+| Arrasto a 100 KB/s | idem, mas o keyframe sem perda leva 12 s | 859 ms / 12 s |
+
+**Falta (etapa 2b):** o keyframe sem perda (a tela inteira, centenas de KB a
+mais de 1 MB) é o 1º quadro grande da sessão e o único jeito de descobrir que
+o link é lento — os quadros de H.264 cabem na janela de 256 KB e "saem" na
+hora mesmo num link lento. Num link lento ele custa segundos uma vez. Saída:
+mandar esse keyframe em pedaços menores que a janela (sobre a imagem do
+H.264, que o viewer já tem), parando no 1º pedaço que demorar.
 
 ### Etapa 3 — rolagem e repetição
 

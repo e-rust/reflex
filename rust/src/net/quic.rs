@@ -19,6 +19,14 @@ fn transport_config() -> Arc<quinn::TransportConfig> {
     t.max_idle_timeout(Some(Duration::from_secs(10).try_into().expect("10 s cabe")));
     t.max_concurrent_bidi_streams(256u32.into());
     t.max_concurrent_uni_streams(64u32.into());
+    // Fila curta no transporte. O padrão do quinn (1,25 MB por stream, 10 MB
+    // no total) escondia a rede lenta: o quadro "saía" na hora e ficava na
+    // fila — medido com o viewer lendo a 100 KB/s, a imagem chegava 12 s
+    // atrasada. Curta, a escrita trava logo, o motor descarta quadros em vez
+    // de acumular (e o híbrido vê o atraso). 256 KB ainda passam ~250 MB/s
+    // numa rede local de 1 ms.
+    t.stream_receive_window((256u32 * 1024).into());
+    t.send_window(1024 * 1024);
     Arc::new(t)
 }
 

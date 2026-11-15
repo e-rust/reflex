@@ -88,6 +88,8 @@ pub fn merge(all: &[&EngineConfig], latest: &EngineConfig) -> EngineConfig {
     if all.iter().any(|c| c.codec != latest.codec) {
         eff.codec = Codec::H264;
         eff.hw_encode = all.iter().find(|c| c.codec == Codec::H264).is_some_and(|c| c.hw_encode);
+        // Já é vídeo: sem híbrido.
+        eff.fallback = None;
     }
     eff
 }
@@ -243,7 +245,7 @@ mod tests {
     use crate::proto::msg::{Chroma, Refine};
 
     fn cfg(codec: Codec, hw: bool) -> EngineConfig {
-        EngineConfig { monitor: 0, codec, hw_encode: hw, max_fps: 30, bitrate_kbps: 8000, max_width: 0, max_height: 0, refine: Refine::default(), chroma: Chroma::default(), desired: None }
+        EngineConfig { monitor: 0, codec, hw_encode: hw, max_fps: 30, bitrate_kbps: 8000, max_width: 0, max_height: 0, refine: Refine::default(), chroma: Chroma::default(), desired: None, fallback: None }
     }
 
     #[test]

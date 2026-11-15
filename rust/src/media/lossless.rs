@@ -120,6 +120,32 @@ impl LosslessMeter {
     }
 }
 
+impl LosslessMeter {
+    /// Quanto o codec sem perda mandaria por este quadro (o menor entre o
+    /// zstd direto e o do delta, como ele faz). Mais barato que [`measure`]:
+    /// sem o lz4 nem os tempos.
+    ///
+    /// [`measure`]: LosslessMeter::measure
+    pub fn estimate(&mut self, bgra: &[u8], stride: usize, width: u32, height: u32, regions: Option<&[Region]>) -> usize {
+        if (width, height) != (self.width, self.height) {
+            (self.width, self.height) = (width, height);
+            self.previous = vec![0; width as usize * height as usize * 4];
+        }
+        let whole = [Region { left: 0, top: 0, right: width, bottom: height }];
+        self.joined.clear();
+        self.delta.clear();
+        for r in regions.unwrap_or(&whole).iter().map(|r| clamp(r, width, height)).filter(|r| !r.is_empty()) {
+            join_region(bgra, stride, &r, &mut self.joined);
+            xor_region(&mut self.previous, width, bgra, stride, &r, &mut self.delta);
+        }
+        if self.joined.is_empty() {
+            return 0;
+        }
+        let size = |b: &[u8]| zstd::bulk::compress(b, ZSTD_LEVEL).map_or(b.len(), |c| c.len());
+        size(&self.joined).min(size(&self.delta))
+    }
+}
+
 /// O retângulo dentro da tela.
 pub(crate) fn clamp(r: &Region, width: u32, height: u32) -> Region {
     Region { left: r.left.min(width), top: r.top.min(height), right: r.right.min(width), bottom: r.bottom.min(height) }
@@ -203,6 +229,18 @@ mod tests {
         let first = m.measure(&img, stride, 256, 128, None);
         let again = m.measure(&img, stride, 256, 128, None);
         assert!(again.delta_bytes * 20 < first.delta_bytes, "delta {} contra {}", again.delta_bytes, first.delta_bytes);
+    }
+
+    #[test]
+    fn the_estimate_is_the_smaller_of_direct_and_delta() {
+        let (img, stride) = image(128, 64, 0, |x, y| [(x ^ y) as u8, (x * y) as u8, (x + y) as u8, 255]);
+        let mut m = LosslessMeter::default();
+        let first = m.estimate(&img, stride, 128, 64, None);
+        assert!(first > 0);
+        // A mesma tela de novo: o delta é tudo zero, quase nada.
+        let again = m.estimate(&img, stride, 128, 64, None);
+        assert!(again * 20 < first, "{again} contra {first}");
+        assert_eq!(m.estimate(&img, stride, 128, 64, Some(&[])), 0, "nada mudou");
     }
 
     #[test]

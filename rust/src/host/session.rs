@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::net::Connection;
 use crate::platform::input::{virtual_screen, Injector, Rect};
-use crate::proto::codec::{Codec, CodecCap};
+use crate::proto::codec::{Codec, CodecCap, CodecChoice};
 use crate::proto::frame::{read_known, write_msg};
 use crate::proto::msg::{AdminRequest, AdminResponse, Chroma, Control, Datagram, Input, Monitor, RemoteSize, SessionConfig, Stats, UniKind};
 use crate::proto::perms::Perms;
@@ -81,7 +81,15 @@ pub fn resolve_engine_config(req: &SessionConfig, params: &SessionParams) -> Res
             RemoteSize::MatchWindow => req.desired,
             RemoteSize::Keep => None,
         },
+        fallback: hybrid_fallback(req, &sel, params),
     })
+}
+
+/// Híbrido: o sem perda que o automático escolheu cai pro H.264 quando a banda
+/// não comporta (pedido explícito do sem perda fica nele). Pura.
+fn hybrid_fallback(req: &SessionConfig, sel: &crate::proto::codec::Selection, params: &SessionParams) -> Option<Codec> {
+    let h264 = |caps: &[CodecCap]| caps.iter().any(|c| c.codec == Codec::H264);
+    (sel.codec == Codec::Lossless && req.codec == CodecChoice::Auto && h264(&params.encoders) && h264(&params.decoders)).then_some(Codec::H264)
 }
 
 /// Monitor escolhido como `Rect` pra traduzir o input. Sumiu (o monitor
@@ -315,7 +323,7 @@ pub fn codec_label(c: Codec) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::codec::{Codec, CodecCap, CodecChoice};
+    use crate::proto::codec::{Codec, CodecCap};
 
     fn params() -> SessionParams {
         SessionParams {
@@ -375,6 +383,20 @@ mod tests {
         // 4:2:0: a placa, como sempre.
         let plain = SessionConfig { codec: CodecChoice::Auto, ..Default::default() };
         assert_eq!(resolve_engine_config(&plain, &p).unwrap().codec, Codec::Av1);
+    }
+
+    #[test]
+    fn automatic_lossless_can_fall_back_to_h264_but_an_explicit_one_cannot() {
+        let mut p = params();
+        // Host sem placa (VM): sem perda no automático.
+        p.encoders = vec![CodecCap { codec: Codec::H264, hw: false }, CodecCap { codec: Codec::Lossless, hw: false }];
+        p.decoders.push(CodecCap { codec: Codec::Lossless, hw: false });
+        let auto = resolve_engine_config(&SessionConfig { codec: CodecChoice::Auto, ..Default::default() }, &p).unwrap();
+        assert_eq!((auto.codec, auto.fallback), (Codec::Lossless, Some(Codec::H264)));
+        let fixed = resolve_engine_config(&SessionConfig { codec: CodecChoice::Fixed(Codec::Lossless), ..Default::default() }, &p).unwrap();
+        assert_eq!((fixed.codec, fixed.fallback), (Codec::Lossless, None));
+        let video = resolve_engine_config(&SessionConfig { codec: CodecChoice::Fixed(Codec::H264), ..Default::default() }, &p).unwrap();
+        assert_eq!(video.fallback, None);
     }
 
     #[test]

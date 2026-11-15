@@ -263,6 +263,10 @@ pub async fn run(
     uni_task.abort();
 }
 
+/// Diagnóstico (`reflex --probe --banda=`): lê o vídeo a no máximo tantos
+/// KB/s, como uma rede lenta (o controle de fluxo segura o host). 0: sem limite.
+pub static READ_LIMIT_KBPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 async fn decode_loop<R: tokio::io::AsyncRead + Unpin>(s: &mut R, events: mpsc::UnboundedSender<ViewerEvent>) {
     let mut decoder: Option<Box<dyn VideoDecoder>> = None;
     let mut current = None;
@@ -271,6 +275,10 @@ async fn decode_loop<R: tokio::io::AsyncRead + Unpin>(s: &mut R, events: mpsc::U
             Ok(f) => f,
             Err(_) => break,
         };
+        let limit = READ_LIMIT_KBPS.load(std::sync::atomic::Ordering::Relaxed);
+        if limit > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs_f64(frame.data.len() as f64 / (limit as f64 * 1024.0))).await;
+        }
         if current != Some(frame.codec) {
             // Decoder novo ao ver codec diferente (troca em sessão). Vídeo: tenta hardware.
             decoder = match frame.codec {

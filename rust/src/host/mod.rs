@@ -10,6 +10,7 @@
 pub mod engine;
 pub mod handshake;
 pub mod hub;
+pub mod hybrid;
 pub mod server;
 pub mod session;
 pub mod user_bridge;

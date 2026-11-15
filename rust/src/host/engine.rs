@@ -14,6 +14,7 @@ use crate::media::capture::ScreenCapture;
 use crate::media::cursor::{to_image, RawCursorShape};
 use crate::media::encode::{EncoderConfig, VideoEncoder, FULL_CHROMA_BACKEND};
 use crate::media::gpu::{fit_even, BgraReadback, Device, Nv12Converter};
+use crate::host::hybrid::{Delivery, HybridPolicy, Mode};
 use crate::media::lossless::{LosslessMeter, LosslessStats};
 use crate::media::pacing::{Decision, Pacer};
 use crate::media::{caps, clock};
@@ -40,6 +41,9 @@ pub struct EngineConfig {
     pub chroma: Chroma,
     /// Tela remota no tamanho que o viewer pediu (como o RDP).
     pub desired: Option<DesiredDisplay>,
+    /// Híbrido (`docs/hibrido.md`): com o sem perda, o codec de vídeo pra
+    /// quando a banda não comporta. `None`: fica no codec pedido.
+    pub fallback: Option<Codec>,
 }
 
 #[derive(Debug)]
@@ -100,20 +104,54 @@ impl Backoff {
 /// Quadros que o motor entregou e quem envia ainda não escreveu na rede. O
 /// motor soma, o envio subtrai; com quadro pendente o [`Pacer`] não codifica
 /// (a tela fica marcada e sai atualizada no próximo) — nada se acumula na fila.
+///
+/// Também anota quanto cada quadro levou pra sair (o híbrido decide por isso).
 #[derive(Debug, Clone, Default)]
-pub struct InFlight(Arc<AtomicUsize>);
+pub struct InFlight(Arc<InFlightInner>);
+
+#[derive(Debug, Default)]
+pub struct InFlightInner {
+    count: AtomicUsize,
+    log: std::sync::Mutex<DeliveryLog>,
+}
+
+/// Os quadros que ainda não saíram (instante, bytes), em ordem, e os que saíram.
+#[derive(Debug, Default)]
+struct DeliveryLog {
+    pending: std::collections::VecDeque<(u64, usize)>,
+    done: Vec<Delivery>,
+}
 
 impl InFlight {
     pub fn sent(&self) {
-        self.0.fetch_add(1, Ordering::AcqRel);
+        self.sent_bytes(0);
     }
 
+    /// Um quadro de `bytes` foi entregue ao envio.
+    pub fn sent_bytes(&self, bytes: usize) {
+        self.0.count.fetch_add(1, Ordering::AcqRel);
+        if let Ok(mut log) = self.0.log.lock() {
+            log.pending.push_back((clock::now_ns(), bytes));
+        }
+    }
+
+    /// O quadro mais antigo saiu (os quadros saem em ordem).
     pub fn done(&self) {
-        let _ = self.0.try_update(Ordering::AcqRel, Ordering::Acquire, |n| Some(n.saturating_sub(1)));
+        let _ = self.0.count.try_update(Ordering::AcqRel, Ordering::Acquire, |n| Some(n.saturating_sub(1)));
+        if let Ok(mut log) = self.0.log.lock()
+            && let Some((at, bytes)) = log.pending.pop_front()
+        {
+            log.done.push(Delivery { took_ns: clock::now_ns().saturating_sub(at), bytes });
+        }
     }
 
     pub fn get(&self) -> usize {
-        self.0.load(Ordering::Acquire)
+        self.0.count.load(Ordering::Acquire)
+    }
+
+    /// Os quadros que saíram desde a última vez.
+    pub fn take_deliveries(&self) -> Vec<Delivery> {
+        self.0.log.lock().map(|mut log| std::mem::take(&mut log.done)).unwrap_or_default()
     }
 }
 
@@ -388,6 +426,10 @@ struct State {
     /// O que mudou na tela desde o último quadro (caminho de CPU: só isso é
     /// lido e convertido).
     damage: crate::media::damage::Damage,
+    /// Híbrido: sem perda ↔ vídeo pela banda (só com `fallback` e no caminho de CPU).
+    hybrid: Option<HybridPolicy>,
+    /// No vídeo do híbrido: quanto o sem perda ocuparia.
+    estimator: LosslessMeter,
 }
 
 impl State {
@@ -417,7 +459,49 @@ impl State {
         let refine = if lossless { Refine::Off } else { cfg.refine };
         let pacer = Pacer::new(cfg.max_fps as u32).with_refine(refine.plan());
         capture.partial = readback.is_some();
-        Ok(Self { cfg: cfg.clone(), dev, capture, conv, readback, encoder, pacer, width, height, damage: crate::media::damage::Damage::Full })
+        let hybrid = (lossless && cfg.fallback.is_some() && readback.is_some()).then(|| HybridPolicy::new(clock::now_ns()));
+        // O híbrido começa no vídeo: o keyframe pequeno mede o link (ver `hybrid`).
+        let (encoder, pacer) = match (hybrid.as_ref(), cfg.fallback) {
+            (Some(_), Some(video)) => {
+                let video_cfg = EngineConfig { codec: video, hw_encode: false, ..cfg.clone() };
+                (open_encoder(&dev, &video_cfg, width, height, false)?, Pacer::new(cfg.max_fps as u32).with_refine(cfg.refine.plan()))
+            }
+            _ => (encoder, pacer),
+        };
+        Ok(Self {
+            cfg: cfg.clone(),
+            dev,
+            capture,
+            conv,
+            readback,
+            encoder,
+            pacer,
+            width,
+            height,
+            damage: crate::media::damage::Damage::Full,
+            hybrid,
+            estimator: LosslessMeter::default(),
+        })
+    }
+
+    /// Híbrido: troca o encoder (a captura e a leitura continuam). O 1º
+    /// quadro do novo já é keyframe, e o viewer troca de decoder ao ver o
+    /// codec mudar.
+    fn switch_mode(&mut self, mode: Mode, why: &str, events: &Sender<EngineEvent>) -> Result<(), StepError> {
+        let codec = match mode {
+            Mode::Lossless => Codec::Lossless,
+            Mode::Video => self.cfg.fallback.unwrap_or(Codec::H264),
+        };
+        let cfg = EngineConfig { codec, hw_encode: false, ..self.cfg.clone() };
+        self.encoder = open_encoder(&self.dev, &cfg, self.width, self.height, false).map_err(StepError::Fatal)?;
+        let refine = if codec == Codec::Lossless { Refine::Off } else { self.cfg.refine };
+        self.pacer = Pacer::new(self.cfg.max_fps as u32).with_refine(refine.plan());
+        self.damage = crate::media::damage::Damage::Full;
+        self.estimator = LosslessMeter::default();
+        let line = format!("híbrido: agora {} ({why})", codec.label());
+        log::info!("{line}");
+        let _ = events.send(EngineEvent::Report(line));
+        Ok(())
     }
 
     fn configured(&self) -> EngineEvent {
@@ -456,6 +540,17 @@ impl State {
             let _ = events.send(EngineEvent::CursorPos { x, y, visible, shape_id: *shape_id });
         }
 
+        // Híbrido: quanto os quadros levaram pra sair decide o modo.
+        let deliveries = shared.in_flight.take_deliveries();
+        let decision = self.hybrid.as_mut().and_then(|h| {
+            let now = clock::now_ns();
+            deliveries.into_iter().for_each(|d| h.delivered(now, d));
+            h.decide(now)
+        });
+        if let Some((mode, why)) = decision {
+            self.switch_mode(mode, &why, events)?;
+        }
+
         let (force_key, refine) = match self.pacer.decide(clock::now_ns(), shared.in_flight.get()) {
             Decision::Wait => return Ok(()),
             Decision::Encode { force_key } => (force_key, false),
@@ -465,6 +560,7 @@ impl State {
         {
             let capture_ns = clock::now_ns();
             let mut measured_us = 0;
+            let mut estimate = None;
             let packets = match &self.readback {
                 Some(rb) => {
                     let encoder = &mut self.encoder;
@@ -472,13 +568,16 @@ impl State {
                     let regions = self.damage.take().regions(w, h);
                     let regions = regions.as_deref();
                     let (meter, lossless) = (shared.lossless.as_mut(), &mut shared.stats.lossless);
+                    // No vídeo do híbrido: quanto o sem perda ocuparia agora.
+                    let estimator = (self.hybrid.as_ref().is_some_and(|h| h.mode() == Mode::Video) && !refine).then_some(&mut self.estimator);
                     rb.read(&self.dev, &self.capture.image.tex, regions, |bgra, stride| {
-                        // O híbrido: o que estes mesmos pixels ocupariam sem perda.
+                        let t = clock::now_ns();
+                        // Diagnóstico: o que estes mesmos pixels ocupariam sem perda.
                         if let Some(m) = meter.filter(|_| !refine) {
-                            let t = clock::now_ns();
                             *lossless += m.measure(bgra, stride, w, h, regions);
-                            measured_us = ((clock::now_ns() - t) / 1000) as u32;
                         }
+                        estimate = estimator.map(|e| e.estimate(bgra, stride, w, h, regions));
+                        measured_us = ((clock::now_ns() - t) / 1000) as u32;
                         encoder.encode_bgra(bgra, stride, regions, force_key)
                     })
                     .map_err(|e| StepError::Fatal(e.to_string()))?
@@ -489,6 +588,20 @@ impl State {
                 }
             }
             .map_err(|e| StepError::Fatal(e.to_string()))?;
+            if let (Some(h), Some(bytes)) = (self.hybrid.as_mut(), estimate) {
+                h.estimated(clock::now_ns(), bytes);
+            }
+            // Híbrido: quadro sem perda grande demais pro link medido nem sai —
+            // vai vídeo já (o próximo quadro é keyframe de vídeo, a tela inteira).
+            let bytes: usize = packets.iter().map(|p| p.data.len()).sum();
+            let too_big = self.hybrid.as_ref().and_then(|h| h.too_big(bytes));
+            if let Some(why) = too_big {
+                if let Some(h) = self.hybrid.as_mut() {
+                    h.force_video(clock::now_ns());
+                }
+                self.switch_mode(Mode::Video, &why, events)?;
+                return Ok(());
+            }
             let timing = self.encoder.last_timing();
             // A medida sem perda não entra no tempo do quadro.
             let total_us = (((clock::now_ns() - capture_ns) / 1000) as u32).saturating_sub(measured_us);
@@ -500,12 +613,13 @@ impl State {
             for p in packets {
                 shared.seq += 1;
                 shared.stats.bytes += p.data.len() as u64;
-                shared.in_flight.sent();
+                shared.in_flight.sent_bytes(p.data.len());
                 let _ = events.send(EngineEvent::Frame(VideoFrame {
                     seq: shared.seq,
                     capture_ns,
                     key: p.key,
-                    codec: self.cfg.codec,
+                    // O do encoder em uso (o híbrido troca no meio da sessão).
+                    codec: self.encoder.codec(),
                     width: self.width,
                     height: self.height,
                     data: p.data,
@@ -596,6 +710,20 @@ mod tests {
     }
 
     #[test]
+    fn deliveries_are_logged_in_order_with_their_size() {
+        let f = InFlight::default();
+        f.sent_bytes(100);
+        f.sent_bytes(200);
+        f.done();
+        let d = f.take_deliveries();
+        assert_eq!(d.iter().map(|d| d.bytes).collect::<Vec<_>>(), vec![100], "o mais antigo sai primeiro");
+        assert!(f.take_deliveries().is_empty(), "já foi lido");
+        f.done();
+        assert_eq!(f.take_deliveries()[0].bytes, 200);
+        assert_eq!(f.get(), 0);
+    }
+
+    #[test]
     fn timer_average() {
         let mut t = Timer::default();
         t.add(1000);
@@ -636,7 +764,7 @@ mod tests {
     fn engine_emits_frames_then_stops() {
         let (ctx, crx) = std::sync::mpsc::channel();
         let (etx, erx) = std::sync::mpsc::channel();
-        let cfg = EngineConfig { monitor: 0, codec: Codec::H264, hw_encode: true, max_fps: 30, bitrate_kbps: 6000, max_width: 1280, max_height: 720, refine: Refine::Off, chroma: Chroma::Yuv420, desired: None };
+        let cfg = EngineConfig { monitor: 0, codec: Codec::H264, hw_encode: true, max_fps: 30, bitrate_kbps: 6000, max_width: 1280, max_height: 720, refine: Refine::Off, chroma: Chroma::Yuv420, desired: None, fallback: None };
         let h = std::thread::spawn(move || run(cfg, crx, etx, InFlight::default()));
         let mut frames = 0;
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
