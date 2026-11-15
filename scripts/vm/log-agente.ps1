@@ -4,6 +4,6 @@ $log = "C:\ProgramData\Reflex\logs\agent.log"
 "--- trocas de área de trabalho / erros ---"
 Select-String -Path $log -Pattern "área de trabalho|SetThreadDesktop|WARN|ERROR|pânico|motor|sessão|encoder|dispositivo|adaptador" | Select-Object -Last 25 | ForEach-Object { $_.Line }
 "--- contagem de recriações (encoder aberto) ---"
-(Select-String -Path $log -Pattern "encoder libx264 1024x768").Count
+(Select-String -Path $log -Pattern "encoder (openh264|libx264) ").Count
 "--- processo do agente ---"
 Get-CimInstance Win32_Process -Filter "Name='reflex.exe'" | ForEach-Object { "pid {0} sessão {1} {2}" -f $_.ProcessId, $_.SessionId, $_.CommandLine }

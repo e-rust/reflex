@@ -1,0 +1,53 @@
+{
+  "aylis_project": 1,
+  "name": "Reflex",
+  "language": "rust",
+  "main_form": "frmPrincipal",
+  "forms": [
+    {
+      "name": "frmPrincipal",
+      "file": "forms/principal.json",
+      "auto_create": true
+    },
+    {
+      "name": "frmVideo",
+      "file": "forms/video.json",
+      "auto_create": false
+    }
+  ],
+  "font": "Inter",
+  "output": {
+    "dir": "runtime",
+    "name": "reflex"
+  },
+  "locale": "pt-BR",
+  "publish": {
+    "app_name": "Reflex",
+    "version": "0.1.0",
+    "publisher": "e-rust",
+    "windows": {
+      "files": [
+        "runtime/avcodec-61.dll",
+        "runtime/avutil-59.dll",
+        "runtime/swresample-5.dll",
+        "runtime/swscale-8.dll"
+      ]
+    }
+  },
+  "render": {
+    "windows": "d2d",
+    "linux": "auto",
+    "macos": "auto",
+    "android": "auto",
+    "ios": "cpu"
+  },
+  "text": {
+    "windows": "core",
+    "linux": "core",
+    "macos": "core",
+    "android": "core",
+    "ios": "core",
+    "web": "layout"
+  },
+  "sdk": "crates.io"
+}

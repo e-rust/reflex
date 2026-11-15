@@ -1,0 +1,348 @@
+{
+  "aylis": 1,
+  "root": {
+    "class": "Form",
+    "name": "frmPrincipal",
+    "caption": "Reflex",
+    "position": "screen_center",
+    "on_show": "frmPrincipal_show",
+    "width": 500,
+    "height": 600,
+    "children": [
+      {
+        "class": "TabControl",
+        "name": "tabPrincipal",
+        "align": "client",
+        "children": [
+          {
+            "class": "TabItem",
+            "name": "tabConectar",
+            "caption": "Conectar",
+            "padding": [24, 16],
+            "children": [
+              {
+                "class": "Label",
+                "name": "lblTituloConectar",
+                "text": "Conectar a uma máquina",
+                "height": 27,
+                "align": "top",
+                "auto_size": true,
+                "font_size": 20,
+                "font_weight": "semibold"
+              },
+              {
+                "class": "Label",
+                "name": "lblEndereco",
+                "text": "Endereço (IP ou nome; porta opcional)",
+                "align": "top",
+                "margins": [0, 16, 0, 0],
+                "auto_size": true
+              },
+              {
+                "class": "Layout",
+                "name": "lyEndereco",
+                "height": 34,
+                "align": "top",
+                "margins": [0, 6, 0, 0],
+                "children": [
+                  {
+                    "class": "Button",
+                    "name": "btnConectar",
+                    "text": "Conectar",
+                    "default_button": true,
+                    "width": 110,
+                    "align": "right",
+                    "margins": [8, 0, 0, 0],
+                    "on_click": "btnConectar_click"
+                  },
+                  {
+                    "class": "Edit",
+                    "name": "edtEndereco",
+                    "placeholder": "ex.: 192.168.0.10 ou PC-SALA:47800",
+                    "align": "client"
+                  }
+                ]
+              },
+              {
+                "class": "Label",
+                "name": "lblStatus",
+                "wrap": true,
+                "height": 0,
+                "align": "top",
+                "margins": [0, 8, 0, 0],
+                "auto_size": true,
+                "text_color": "text_muted"
+              },
+              {
+                "class": "Label",
+                "name": "lblMeuId",
+                "text": "Meu ID — cadastre na máquina que vai controlar",
+                "align": "top",
+                "margins": [0, 16, 0, 0],
+                "auto_size": true
+              },
+              {
+                "class": "Layout",
+                "name": "lyMeuId",
+                "height": 34,
+                "align": "top",
+                "margins": [0, 6, 0, 0],
+                "children": [
+                  {
+                    "class": "Button",
+                    "name": "btnCopiarId",
+                    "text": "Copiar",
+                    "width": 110,
+                    "align": "right",
+                    "margins": [8, 0, 0, 0],
+                    "on_click": "btnCopiarId_click"
+                  },
+                  {
+                    "class": "Edit",
+                    "name": "edtMeuId",
+                    "read_only": true,
+                    "align": "client"
+                  }
+                ]
+              },
+              {
+                "class": "Label",
+                "name": "lblOpcoes",
+                "text": "Imagem e controle",
+                "align": "top",
+                "margins": [0, 20, 0, 4],
+                "auto_size": true,
+                "font_weight": "semibold"
+              },
+              {
+                "class": "Layout",
+                "name": "lyNitidez",
+                "height": 32,
+                "align": "top",
+                "margins": [0, 4, 0, 0],
+                "children": [
+                  {
+                    "class": "Label",
+                    "name": "lblNitidez",
+                    "text": "Nitidez com a tela parada",
+                    "width": 190,
+                    "align": "left"
+                  },
+                  {
+                    "class": "ComboBox",
+                    "name": "cmbNitidez",
+                    "align": "client"
+                  }
+                ]
+              },
+              {
+                "class": "Layout",
+                "name": "lyEscala",
+                "height": 32,
+                "align": "top",
+                "margins": [0, 4, 0, 0],
+                "children": [
+                  {
+                    "class": "Label",
+                    "name": "lblEscala",
+                    "text": "Escala na janela",
+                    "width": 190,
+                    "align": "left"
+                  },
+                  {
+                    "class": "ComboBox",
+                    "name": "cmbEscala",
+                    "align": "client"
+                  }
+                ]
+              },
+              {
+                "class": "Layout",
+                "name": "lyResolucao",
+                "height": 32,
+                "align": "top",
+                "margins": [0, 4, 0, 0],
+                "children": [
+                  {
+                    "class": "Label",
+                    "name": "lblResolucao",
+                    "text": "Resolução remota",
+                    "width": 190,
+                    "align": "left"
+                  },
+                  {
+                    "class": "ComboBox",
+                    "name": "cmbResolucao",
+                    "align": "client"
+                  }
+                ]
+              },
+              {
+                "class": "Layout",
+                "name": "lyCor",
+                "height": 32,
+                "align": "top",
+                "margins": [0, 4, 0, 0],
+                "children": [
+                  {
+                    "class": "Label",
+                    "name": "lblCor",
+                    "text": "Cor",
+                    "width": 190,
+                    "align": "left"
+                  },
+                  {
+                    "class": "ComboBox",
+                    "name": "cmbCor",
+                    "align": "client"
+                  }
+                ]
+              },
+              {
+                "class": "Layout",
+                "name": "lyCursor",
+                "height": 32,
+                "align": "top",
+                "margins": [0, 4, 0, 0],
+                "children": [
+                  {
+                    "class": "Label",
+                    "name": "lblCursor",
+                    "text": "Cursor",
+                    "width": 190,
+                    "align": "left"
+                  },
+                  {
+                    "class": "ComboBox",
+                    "name": "cmbCursor",
+                    "align": "client"
+                  }
+                ]
+              },
+              {
+                "class": "Layout",
+                "name": "lyClipboard",
+                "height": 32,
+                "align": "top",
+                "margins": [0, 4, 0, 0],
+                "children": [
+                  {
+                    "class": "Label",
+                    "name": "lblClipboard",
+                    "text": "Clipboard",
+                    "width": 190,
+                    "align": "left"
+                  },
+                  {
+                    "class": "ComboBox",
+                    "name": "cmbClipboard",
+                    "align": "client"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "class": "TabItem",
+            "name": "tabMaquina",
+            "caption": "Esta máquina",
+            "padding": [24, 16],
+            "children": [
+              {
+                "class": "Layout",
+                "name": "lyTituloMaquina",
+                "height": 36,
+                "align": "top",
+                "children": [
+                  {
+                    "class": "Button",
+                    "name": "btnAtualizar",
+                    "text": "Atualizar",
+                    "width": 110,
+                    "align": "right",
+                    "on_click": "btnAtualizar_click"
+                  },
+                  {
+                    "class": "Label",
+                    "name": "lblTituloMaquina",
+                    "text": "Esta máquina",
+                    "align": "client",
+                    "font_size": 20,
+                    "font_weight": "semibold"
+                  }
+                ]
+              },
+              {
+                "class": "Label",
+                "name": "lblServico",
+                "text": "Verificando o serviço…",
+                "wrap": true,
+                "align": "top",
+                "margins": [0, 12, 0, 0],
+                "auto_size": true
+              },
+              {
+                "class": "Label",
+                "name": "lblIdMaquina",
+                "text": "ID desta máquina: —",
+                "wrap": true,
+                "align": "top",
+                "margins": [0, 6, 0, 0],
+                "auto_size": true
+              },
+              {
+                "class": "Label",
+                "name": "lblEnderecos",
+                "text": "Endereços: —",
+                "wrap": true,
+                "align": "top",
+                "margins": [0, 6, 0, 0],
+                "auto_size": true
+              },
+              {
+                "class": "Label",
+                "name": "lblUsuarios",
+                "text": "Usuários com acesso",
+                "align": "top",
+                "margins": [0, 18, 0, 0],
+                "auto_size": true,
+                "font_weight": "semibold"
+              },
+              {
+                "class": "ListView",
+                "name": "lvUsuarios",
+                "height": 170,
+                "align": "top",
+                "margins": [0, 6, 0, 0]
+              },
+              {
+                "class": "Layout",
+                "name": "lyCompartilhar",
+                "height": 44,
+                "align": "top",
+                "margins": [0, 12, 0, 0],
+                "children": [
+                  {
+                    "class": "Button",
+                    "name": "btnCompartilhar",
+                    "text": "Compartilhar acesso",
+                    "width": 180,
+                    "align": "left",
+                    "on_click": "btnCompartilhar_click"
+                  },
+                  {
+                    "class": "Label",
+                    "name": "lblConvite",
+                    "wrap": true,
+                    "align": "client",
+                    "margins": [12, 0, 0, 0]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

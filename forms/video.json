@@ -1,0 +1,44 @@
+{
+  "aylis": 1,
+  "root": {
+    "class": "Form",
+    "name": "frmVideo",
+    "caption": "Reflex",
+    "position": "screen_center",
+    "on_show": "frmVideo_show",
+    "on_close": "frmVideo_close",
+    "width": 1280,
+    "height": 760,
+    "fill": "#000000",
+    "children": [
+      {
+        "class": "Layout",
+        "name": "lyVideo",
+        "align": "client",
+        "children": [
+          {
+            "class": "FrameView",
+            "name": "fvTela",
+            "align": "client"
+          },
+          {
+            "class": "Image",
+            "name": "imgCursor",
+            "fit": "stretch",
+            "width": 32,
+            "height": 32,
+            "visible": false,
+            "hit_test": false
+          }
+        ]
+      },
+      {
+        "class": "Timer",
+        "name": "tmrVideo",
+        "interval": 50,
+        "enabled": false,
+        "on_timer": "tmrVideo_timer"
+      }
+    ]
+  }
+}

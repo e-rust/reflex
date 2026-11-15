@@ -9,44 +9,25 @@ incomoda no uso; **Baixa** = melhoria ou depois da 1ª versão.
 
 ## Licença e distribuição
 
-### Trocar o x264 pelo openh264 — Alta
+### ~~Trocar o x264 pelo openh264~~ — feito
 
-O encode por CPU (máquinas sem placa de vídeo: VMs, servidores) usa o
-`libx264` pelo FFmpeg. O x264 é **GPL**: distribuir o Reflex com ele obriga o
-projeto inteiro a seguir a GPL, o que conflita com a licença MIT. Por isso as
-DLLs do FFmpeg saíram do repositório (`.gitignore`) até a troca.
+O H.264 pela CPU é o openh264 da Cisco (`rust/src/media/openh264enc.rs`),
+baixado da Cisco pelo `--install` (condição da licença de patente) com o
+hash conferido; o FFmpeg é a build LGPL (só placa de vídeo e decoders). As
+DLLs não ficam no repositório: `scripts/obter-dependencias.ps1` baixa versões
+fixas e confere o hash. O `vcruntime140.dll` não é mais preciso (CRT
+estático; a build LGPL do BtbN não depende dele).
 
-O caminho que o levantamento já indica (§4.2, §6):
+O que sobrou:
 
-- **`openh264`** (Cisco, BSD) para H.264 por CPU. O binário que a Cisco
-  distribui cobre a licença de patente do H.264; compilar o openh264 por
-  conta própria não tem essa cobertura.
-- **FFmpeg em build LGPL** (sem `--enable-gpl`, sem x264) para o resto:
-  encoders de placa de vídeo (AMF, NVENC, QSV) e os decoders. Alternativa:
-  usar o openh264 direto pelo crate `openh264` e tirar o FFmpeg do caminho
-  de CPU.
-- Ajustar o que hoje depende do x264:
-  - afinação de tempo real (`low_latency_options`, preset `ultrafast`, VBV,
-    `refine`): o openh264 tem outros parâmetros (`RC_MODE`, `iTargetBitrate`,
-    `bEnableFrameSkip`, `iMultipleThreadIdc`); medir de novo na VM de 1 núcleo;
-  - **cor completa (4:4:4)**: o openh264 só faz 4:2:0 (perfil Baseline/High
-    sem 4:4:4). Opções: deixar o 4:4:4 só para quem tiver placa que suporte
-    ou para builds com x264 (opcional, por conta do usuário);
-  - keyframe sob demanda e a reabertura do encoder (`can_force_key`).
-- Testes: `x264_from_cpu_bgra_preserves_colors_and_is_fast`,
-  `full_chroma_keeps_one_pixel_color_stripes` e
-  `only_the_changed_region_is_read_and_converted` passam a cobrir o encoder
-  novo.
-- Documentar de onde baixar o binário da Cisco e o FFmpeg LGPL (ou um
-  script que baixe e confira o hash).
-
-### DLLs fora do repositório — Alta
-
-Até a troca acima, quem clona não tem as DLLs (`third_party/ffmpeg`).
-Precisa de um jeito reprodutível de obtê-las: um script que baixe versões
-fixas, confira o hash e as ponha na pasta (ou um *release* com o pacote
-pronto). O mesmo vale para o `vcruntime140.dll` (redistribuível da
-Microsoft).
+- **Cor completa (4:4:4) pela CPU** — Baixa: o openh264 só faz 4:2:0. Hoje o
+  4:4:4 só existe com uma build GPL do FFmpeg (com x264) posta pelo usuário;
+  sem ela o pedido cai em 4:2:0. Caminho: 4:4:4 por placa de vídeo (HEVC
+  RExt no NVENC) ou aceitar 4:2:0 com o refino.
+- **Afinação do openh264** — Média: está com taxa constante sem pular
+  quadro (o openh264 avisa que assim não segura a taxa à risca) e sem
+  detecção de troca de cena. Medir na VM de 1 núcleo e comparar com o x264
+  (bits por quadro, tempo de encode, nitidez do texto).
 
 ### Assinatura do driver e do executável — Média
 
@@ -120,6 +101,55 @@ tela. Opcional: devolver a sessão ao console ao desconectar
 - **Proteção da chave do master — Baixa.** Hoje só DPAPI; frase-senha
   opcional e, depois, chave em hardware (Windows Hello/TPM) (§11.6).
 
+## Transporte da imagem (decidido em 15/11/2026)
+
+Três frentes, nesta ordem:
+
+### 1. Híbrido imagem + vídeo — Alta (em andamento)
+
+Mandar como **imagem sem perda** o que muda pouco (texto, janelas, menus — o
+grosso da administração remota) e **vídeo** só nas regiões que mudam o tempo
+todo (um vídeo tocando, uma animação), como o RDP faz.
+
+- O DXGI já entrega os retângulos alterados (*dirty rects*) e os que só
+  mudaram de lugar (*move rects*): a rolagem e o arrasto de janela viram
+  "copie esta área para lá", sem pixel nenhum.
+- Compactação livre de patente e de licença: zstd ou lz4 (BSD), QOI (MIT);
+  JPEG só se a área for foto. Cache de pedaços repetidos (ícones, botões).
+- Sem perda, a cor completa (4:4:4) vem de graça — hoje só existe com o x264
+  (GPL) — e a tela parada já fica perfeita (o refino com H.264 deixa de ser
+  preciso).
+- O motor decide por região, pela frequência de mudança.
+- Antes: **medir** bytes e tempo por quadro (digitação, rolagem, arrastar
+  janela, vídeo) com zstd/lz4 contra o H.264 de hoje, aqui e na VM de 1 núcleo.
+- Limite: movimento contínuo em tela cheia sem perda passa de dezenas de MB/s;
+  serve na rede cabeada, sofre no Wi-Fi e não serve pela internet — por isso
+  o vídeo continua para essas regiões.
+
+### 2. Tirar o FFmpeg — Média
+
+Hoje ele dá os encoders das placas, todos os decoders e o swscale (66 MB do
+`avcodec` no pacote, quase tudo). Sem ele:
+
+- encoders e decoders das placas pelo **Media Foundation** do Windows (o
+  H.264 já vem licenciado pelo Windows e pelos fabricantes; HEVC e AV1 pelas
+  extensões da Store);
+- H.264 pela CPU, codificar **e decodificar**, pelo **openh264** da Cisco (a
+  patente coberta pelo binário dela);
+- AV1 sem placa no viewer pelo **dav1d** (BSD);
+- some a dúvida de patente do decoder por software do FFmpeg.
+
+Caminho intermediário, se a troca demorar: um FFmpeg LGPL mínimo, só com os
+codecs que o Reflex usa (poucos MB).
+
+### 3. AV1 e AV2 — Baixa
+
+- **AV1** (livre de royalties) já é usado quando os dois lados têm placa;
+  vale preferi-lo sempre que houver encoder AV1 no host. Não serve para host
+  sem placa: codificar AV1 pela CPU pesa várias vezes o openh264.
+- **AV2:** especificação recém-saída, sem placa que codifique/decodifique e
+  sem encoder em tempo real. Rever quando houver suporte em hardware.
+
 ## Vídeo e desempenho
 
 - **Máquinas de 1 núcleo sob carga — Média.** Com o menu Iniciar aberto a VM
@@ -130,9 +160,9 @@ tela. Opcional: devolver a sessão ao console ao desconectar
   à rede (perda, RTT) (fase 4 do levantamento).
 - **Estatísticas na tela — Baixa.** As medidas do host vão pro log; mostrar
   quadros/s, latência e bitrate na janela.
-- **Apresentação por D3D11 — Baixa.** A janela pinta com `StretchDIBits`; uma
-  swapchain D3D11 tiraria a conversão NV12→BGRA da CPU no viewer e a cópia
-  por quadro (hoje ~8 ms a 2560×1600).
+- **Apresentação por D3D11 — Baixa.** A janela pinta o BGRA no `FrameView` do
+  Aylis; levar o NV12 direto pra placa tiraria a conversão NV12→BGRA da CPU no
+  viewer (hoje ~8 ms a 2560×1600) e a cópia por quadro.
 - **Buffers reaproveitados no viewer — Baixa.** Cada quadro decodificado
   aloca um buffer novo (16 MB a 2560×1600).
 - **Resolução inicial do monitor virtual — Baixa.** O modo de 720p não é
@@ -147,7 +177,11 @@ tela. Opcional: devolver a sessão ao console ao desconectar
 - **Ao reconectar, reenviar o clipboard atual — Baixa.** Depois de uma
   reconexão, o host não recebe o que já estava copiado aqui.
 - **Instalador, ícone e modo escuro — Média.** Hoje é `reflex.exe --install`
-  na mão; falta instalador, ícone próprio e tema escuro.
+  na mão; falta instalador (o Publicar do Aylis gera um), ícone próprio e
+  tema escuro (o Aylis tem temas).
+- **`--connect` sem a janela principal — Baixa.** Com a interface no Aylis,
+  o `reflex --connect` abre a janela principal (já conectando) junto com a de
+  vídeo; antes abria só o vídeo.
 - **Viewer em outros sistemas — Baixa.** Decisão em aberto (§9.6).
 
 ## Arquivos e mídia (depois da 1ª versão)
@@ -169,7 +203,7 @@ Hoje é só LAN. Pra usar pela internet: servidor de encontro (*rendezvous*) e
 
 ## Projeto
 
-- **CI — Média.** Compilar, `cargo clippy` e `cargo test --workspace` a cada
+- **CI — Média.** Compilar, `cargo clippy` e `cargo test` (em `rust\`) a cada
   push. Os testes com GPU, monitor ou clipboard de verdade (`#[ignore]`)
   continuam manuais.
 - **Testes em Windows Server e em máquinas físicas sem GPU — Média.**

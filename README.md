@@ -10,8 +10,8 @@ O levantamento completo (decisões, arquitetura, protocolo) está em
 
 ## O que faz
 
-- **Vídeo**: captura DXGI, H.264/HEVC/AV1 por placa de vídeo ou x264 pela
-  CPU; refino da imagem com a tela parada e cor completa (4:4:4) opcional.
+- **Vídeo**: captura DXGI, H.264/HEVC/AV1 por placa de vídeo ou H.264 pela
+  CPU com o openh264 da Cisco; refino da imagem com a tela parada.
   Em máquina sem placa (VM, servidor) só o que mudou na tela é lido e
   convertido.
 - **Controle total**: teclado (inclusive Win, Alt+Tab e Ctrl+Alt+Del), mouse,
@@ -34,17 +34,31 @@ O levantamento completo (decisões, arquitetura, protocolo) está em
 
 ## Arquitetura
 
-| Crate | Papel |
+O Reflex é um projeto do [Aylis](https://crates.io/crates/aylis)
+(`Reflex.aylisproj`), com as pastas dele:
+
+| Pasta | O que é |
 |---|---|
-| `reflex-proto` | mensagens e enquadramento do protocolo |
-| `reflex-auth` | identidade, usuários, master, convites (SPAKE2) |
-| `reflex-net` | transporte QUIC + TCP/TLS mútuo |
-| `reflex-media` | captura DXGI, conversões, codec (libavcodec) |
-| `reflex-platform` | input, áreas de trabalho, clipboard, arquivos virtuais, pipes, monitor |
-| `reflex-host` | aceitar conexões, motor de captura compartilhado, ponte com o usuário |
-| `reflex-viewer` | conexão do viewer, decodificação |
-| `reflex-ui` | interface (winsafe) e janela de vídeo |
-| `reflex` (`app/`) | o executável: serviço, agente, processo do usuário, CLI |
+| `forms/` | a janela principal e a de vídeo |
+| `rust/` | o código: um crate só, o `reflex.exe` inteiro |
+| `rust/generated/` | o que a IDE gera dos forms (não se edita à mão) |
+| `runtime/` | onde a IDE põe o exe, ao lado das DLLs (FFmpeg, openh264) |
+| `dist/` | o que o Publicar gera (`dist\windows`) |
+| `assets/`, `themes/`, `locales/` | imagens, tema e traduções do Aylis |
+
+Os módulos de `rust/src/`:
+
+| Módulo | Papel |
+|---|---|
+| `proto` | mensagens e enquadramento do protocolo |
+| `auth` | identidade, usuários, master, convites (SPAKE2) |
+| `net` | transporte QUIC + TCP/TLS mútuo |
+| `media` | captura DXGI, conversões, codecs (FFmpeg, openh264) |
+| `platform` | input, áreas de trabalho, clipboard, arquivos virtuais, pipes, monitor |
+| `host` | aceitar conexões, motor de captura compartilhado, ponte com o usuário |
+| `viewer` | conexão do viewer, decodificação |
+| `forms/`, `sessao`, `video/`, `maquina` | a interface: o código dos forms, a conexão sem tela, a janela de vídeo, a aba "Esta máquina" |
+| `modes` | o `main`: interface, serviço, agente, processo do usuário e CLI |
 
 No host, o **serviço** (sessão 0) mantém um **agente** como SYSTEM na sessão
 de console — é ele que captura, injeta input e vê a tela de login — e, com
@@ -53,32 +67,33 @@ arquivos com as permissões de quem está logado.
 
 ## Compilar
 
-Requer Windows 10/11 x64 e Rust estável.
+Requer Windows 10/11 x64, Rust estável e a IDE do Aylis.
 
-```
-.\scripts\empacotar.ps1
-```
+Antes, uma vez: `.\scripts\obter-dependencias.ps1`. As bibliotecas
+carregadas em tempo de execução não estão no repositório; o script baixa o
+FFmpeg 7.1 LGPL e o openh264 da Cisco pra `runtime\` (ver
+[runtime/README.md](runtime/README.md)).
 
-Antes, ponha as DLLs do FFmpeg em `third_party\ffmpeg`: elas não estão no
-repositório (o `libx264` é GPL) — ver
-[third_party/ffmpeg/README.md](third_party/ffmpeg/README.md).
+Na IDE do Aylis, abra o `Reflex.aylisproj`: Compilar (Ctrl+F9) e Executar (F9)
+põem o `reflex.exe` em `runtime\`. Sem a IDE, `cargo build` em `rust\`.
 
-O script compila e monta **`dist\`** com só o que vai pra outra máquina: o
-`reflex.exe` e as DLLs de `third_party\ffmpeg`. Copie a pasta e rode
-`reflex.exe --install` como administrador. Pra usar nesta máquina, abra o de
-`dist\` (é uma cópia: aberto, não trava o próximo build).
+O **Publicar** gera `dist\windows\` com só o que vai pra outra máquina: o
+`reflex.exe` e as DLLs do FFmpeg. Copie a pasta e rode `reflex.exe --install`
+como administrador — ele baixa o openh264 da Cisco (é a condição da licença de
+patente do H.264) e confere o hash.
 
 ## Uso
 
 ```
 reflex                                   janela principal
-reflex --connect <endereço>              conecta direto (ip ou nome, porta opcional; padrão 47800)
+reflex --connect <endereço>              conecta já (ip ou nome, porta opcional; padrão 47800); fechar o vídeo fecha
 reflex --my-id                           ID de acesso deste viewer
 reflex --install / --uninstall           serviço, firewall, monitor virtual (admin)
 reflex --add-user <ID> <nome> <nível>    master | full | view (admin)
 reflex --status                          estado, ID da máquina, endereços, usuários (admin)
 reflex --admin <endereço> ...            administração remota (master)
 reflex --probe <endereço> [s] [png] ...  viewer sem janela, pra testes e medidas
+reflex --baixar-openh264 <pasta>         baixa o openh264 da Cisco (o --install já baixa)
 reflex --service | --agent | --user      iniciados pelo próprio Reflex
 ```
 
@@ -89,16 +104,13 @@ pro log da interface (`host: motor …`).
 
 ## Testes
 
-```
-cargo test --workspace
-```
-
-Os que precisam de GPU, monitor, FFmpeg ou do clipboard de verdade ficam
-marcados `#[ignore]`:
+Pela IDE (o `test` do Aylis) ou `cargo test` em `rust\`. Os que precisam de
+GPU, monitor, FFmpeg ou do clipboard de verdade ficam marcados `#[ignore]`
+(os de integração estão em `rust\tests\`):
 
 ```
-cargo test -p reflex-media --test pipeline -- --ignored --nocapture
-cargo test -p reflex-viewer --test end_to_end -- --ignored --nocapture
+cargo test --test pipeline -- --ignored --nocapture
+cargo test --test end_to_end -- --ignored --nocapture
 ```
 
 ### Numa VM Hyper-V
@@ -108,8 +120,7 @@ Num PowerShell **como administrador**, na pasta do projeto:
 ```
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 . .\scripts\vm-conectar.ps1                     # pede a senha da VM uma vez
-.\scripts\empacotar.ps1                         # monta dist\
-& .\scripts\testar-vm.ps1 -ViewerId <seu ID>    # copia, instala e cadastra o master
+& .\scripts\testar-vm.ps1 -ViewerId <seu ID>    # copia dist\windows (Publicar), instala e cadastra o master
 ```
 
 No *Default Switch* a VM muda de IP a cada reinício do PC: conecte pelo nome
@@ -119,10 +130,11 @@ do computador com `.mshome.net` (ex.: `DESKTOP-XXXX.mshome.net`).
 
 [MIT](LICENSE) para o código do Reflex.
 
-As dependências binárias em `third_party\` têm licenças próprias: o
-[Virtual Display Driver](third_party/vdd/LICENSE) é MIT; o FFmpeg é
-LGPL/GPL e o **`libx264` é GPL** — distribuir o Reflex com ele obriga a seguir
-a GPL. Por isso as DLLs do FFmpeg não estão no repositório, e a troca do x264
-pelo `openh264` (BSD) está nas [pendências](docs/pendencias.md).
+As dependências binárias têm licenças próprias, todas compatíveis com
+distribuir o Reflex como MIT: o
+[Virtual Display Driver](third_party/vdd/LICENSE) é MIT; o
+[FFmpeg](runtime/README.md#ffmpeg) é a build LGPL (carregada como DLL);
+o [openh264](runtime/README.md#openh264) é BSD, baixado da Cisco na
+instalação (OpenH264 Video Codec provided by Cisco Systems, Inc.).
 
 Pendências do projeto: [docs/pendencias.md](docs/pendencias.md).

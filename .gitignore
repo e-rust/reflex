@@ -1,11 +1,16 @@
-# Compilação (um só target\; o pacote pra outra máquina sai em dist\)
+# A compilação do Rust e o que o Publicar do Aylis gera (dist\windows).
 /target
-/dist
+/rust/target/
+/dist/
 
-# DLLs do FFmpeg (com o libx264, GPL) não vão pro repositório: cada um põe
-# as suas em third_party/ffmpeg (ver o README de lá). Sai quando o x264 for
-# trocado pelo openh264 (docs/pendencias.md).
-/third_party/ffmpeg/*.dll
+# runtime\ é o runtime de desenvolvimento: o reflex.exe que a IDE compila e as
+# DLLs (FFmpeg LGPL, openh264 da Cisco), que não vão pro repositório —
+# `scripts\obter-dependencias.ps1` baixa (ver runtime/README.md).
+/runtime/*
+!/runtime/README.md
+
+# A ligação do agente com a IDE do Aylis (o caminho do aylis-tool desta máquina).
+/.mcp.json
 
 # Saídas do `reflex --probe` (último quadro) e afins na raiz
 /*.png

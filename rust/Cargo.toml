@@ -1,0 +1,142 @@
+[package]
+name = "reflex"
+description = "Reflex: controle remoto de tela (um exe, vários modos — §5.3; a interface no Aylis)"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+default-run = "reflex"
+build = "build.rs"
+
+# lib: o aplicativo (forms, handlers e os modos sem janela: serviço, agente, CLI).
+# bin: o executável.
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "reflex"
+path = "src/main.rs"
+
+# De onde vem o aylis: a chave `sdk` do projeto (o crates.io, ou uma pasta). As features
+# (dados, mídia...) são as que os forms usam; a IDE atualiza a lista a cada "Gerar código".
+[dependencies]
+aylis = { version = "0.4.1-beta.1", default-features = false, features = [] }
+# Protocolo, rede e autenticação (proto, net, auth).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = { version = "1", features = ["use-std"] }
+thiserror = "2"
+log = { version = "0.4", features = ["std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
+quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
+rcgen = "0.14"
+sha2 = "0.10"
+hmac = "0.12"
+rand = "0.8"
+spake2 = "0.4"
+# Mídia: as DLLs do FFmpeg e o openh264 da Cisco carregados em tempo de execução;
+# o download do openh264 (ureq + bzip2).
+libloading = "0.8"
+openh264 = { version = "0.9.10", default-features = false, features = ["libloading"] }
+ureq = { version = "3", default-features = false }
+bzip2 = "0.6"
+png = "0.18"
+# Windows: serviço e a API.
+windows-service = "0.8"
+windows-core = "0.61"
+windows = { version = "0.61", features = [
+  "Win32_Devices_DeviceAndDriverInstallation",
+  "Win32_Devices_Display",
+  "Win32_Devices_Properties",
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D_Fxc",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_Media",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Security_Cryptography",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Console",
+  "Win32_System_DataExchange",
+  "Win32_System_Environment",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_System_Performance",
+  "Win32_System_Pipes",
+  "Win32_System_Power",
+  "Win32_System_Registry",
+  "Win32_System_RemoteDesktop",
+  "Win32_System_Services",
+  "Win32_System_StationsAndDesktops",
+  "Win32_System_SystemServices",
+  "Win32_System_Threading",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_Common",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[features]
+# Ligada pela IDE ao executar: o canal cifrado com a IDE (inspetor, hot reload,
+# rastro). Fica fora do app publicado.
+dev = ["aylis/dev"]
+
+# Embute forms, temas e assets no executável (e o ícone no .exe do Windows); o
+# embed-resource põe o manifesto do Reflex (DPI, UTF-8, console destacado).
+[build-dependencies]
+aylis-build = { version = "0.4.1-beta.1" }
+embed-resource = "3"
+
+# aylis:render: o renderizador de cada plataforma (Projeto → Opções; a IDE reescreve este bloco)
+# Windows: Direct2D
+[target.'cfg(windows)'.dependencies]
+aylis = { version = "0.4.1-beta.1", default-features = false, features = ["d2d"] }
+
+# Linux: Automático (Skia GPU, senão CPU)
+[target.'cfg(target_os = "linux")'.dependencies]
+aylis = { version = "0.4.1-beta.1", default-features = false, features = ["skia-gpu", "skia-cpu"] }
+
+# macOS: Automático (Skia GPU, senão CPU)
+[target.'cfg(target_os = "macos")'.dependencies]
+aylis = { version = "0.4.1-beta.1", default-features = false, features = ["skia-gpu", "skia-cpu"] }
+
+# Android: Automático (Skia GPU, senão CPU)
+[target.'cfg(target_os = "android")'.dependencies]
+aylis = { version = "0.4.1-beta.1", default-features = false, features = ["skia-gpu", "skia-cpu"] }
+
+# iOS: Skia CPU
+[target.'cfg(target_os = "ios")'.dependencies]
+aylis = { version = "0.4.1-beta.1", default-features = false, features = ["skia-cpu"] }
+
+# aylis:render-end
+
+# Build enxuto em disco: o grosso do `target\` era informação de depuração
+# (PDBs) e cache incremental, que o Cargo nunca apaga sozinho.
+[profile.dev]
+debug = "line-tables-only" # backtrace com arquivo:linha, sem PDB completo
+incremental = false
+
+# O Aylis e as outras dependências otimizados mesmo no modo de depuração: a rolagem e as
+# animações acompanham o monitor. O código do app continua depurável.
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+# Fora do workspace da pasta acima: o projeto compila sozinho.
+[workspace]

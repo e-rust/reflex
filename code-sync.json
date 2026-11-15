@@ -1,0 +1,111 @@
+{
+  "revisions": {
+    "frmPrincipal.btnAtualizar_click": 1,
+    "frmPrincipal.btnCompartilhar_click": 1,
+    "frmPrincipal.btnConectar_click": 2,
+    "frmPrincipal.btnCopiarId_click": 1,
+    "frmPrincipal.frmPrincipal_show": 2,
+    "frmVideo.frmVideo_close": 1,
+    "frmVideo.frmVideo_show": 1,
+    "frmVideo.tmrVideo_timer": 1
+  },
+  "languages": {
+    "rust": {
+      "bindings": {
+        "frmPrincipal/btnAtualizar.on_click": "btnAtualizar_click",
+        "frmPrincipal/btnCompartilhar.on_click": "btnCompartilhar_click",
+        "frmPrincipal/btnConectar.on_click": "btnConectar_click",
+        "frmPrincipal/btnCopiarId.on_click": "btnCopiarId_click",
+        "frmPrincipal/frmPrincipal.on_show": "frmPrincipal_show",
+        "frmVideo/frmVideo.on_close": "frmVideo_close",
+        "frmVideo/frmVideo.on_show": "frmVideo_show",
+        "frmVideo/tmrVideo.on_timer": "tmrVideo_timer"
+      },
+      "handlers": {
+        "frmPrincipal.btnAtualizar_click": {
+          "hash": "v2:34ef6b9b44c99901",
+          "seen": 1
+        },
+        "frmPrincipal.btnCompartilhar_click": {
+          "hash": "v2:2cfb42d6fba30262",
+          "seen": 1
+        },
+        "frmPrincipal.btnConectar_click": {
+          "hash": "v2:9d3d515a25faf163",
+          "seen": 2
+        },
+        "frmPrincipal.btnCopiarId_click": {
+          "hash": "v2:ae6181c42acb5100",
+          "seen": 1
+        },
+        "frmPrincipal.frmPrincipal_show": {
+          "hash": "v2:a8ddfa649ce1cffa",
+          "seen": 2
+        },
+        "frmVideo.frmVideo_close": {
+          "hash": "v2:eb4a4e4549e044d4",
+          "seen": 1
+        },
+        "frmVideo.frmVideo_show": {
+          "hash": "v2:6f5fc5e97f4e6857",
+          "seen": 1
+        },
+        "frmVideo.tmrVideo_timer": {
+          "hash": "v2:5acca0ab94abe8dc",
+          "seen": 1
+        }
+      }
+    }
+  },
+  "components": [
+    "btnAtualizar",
+    "btnCompartilhar",
+    "btnConectar",
+    "btnCopiarId",
+    "cmbClipboard",
+    "cmbCor",
+    "cmbCursor",
+    "cmbEscala",
+    "cmbNitidez",
+    "cmbResolucao",
+    "edtEndereco",
+    "edtMeuId",
+    "frmPrincipal",
+    "frmVideo",
+    "fvTela",
+    "imgCursor",
+    "lblClipboard",
+    "lblConvite",
+    "lblCor",
+    "lblCursor",
+    "lblEndereco",
+    "lblEnderecos",
+    "lblEscala",
+    "lblIdMaquina",
+    "lblMeuId",
+    "lblNitidez",
+    "lblOpcoes",
+    "lblResolucao",
+    "lblServico",
+    "lblStatus",
+    "lblTituloConectar",
+    "lblTituloMaquina",
+    "lblUsuarios",
+    "lvUsuarios",
+    "lyClipboard",
+    "lyCompartilhar",
+    "lyCor",
+    "lyCursor",
+    "lyEndereco",
+    "lyEscala",
+    "lyMeuId",
+    "lyNitidez",
+    "lyResolucao",
+    "lyTituloMaquina",
+    "lyVideo",
+    "tabConectar",
+    "tabMaquina",
+    "tabPrincipal",
+    "tmrVideo"
+  ]
+}

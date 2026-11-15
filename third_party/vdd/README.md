@@ -14,7 +14,7 @@ existe. O Reflex liga esse monitor quando a máquina fica sem monitor ativo
 
 Os arquivos ficam **byte a byte** como no release (o `.cat` assina o `.inf`);
 o `.gitattributes` os marca como binários. São embutidos no `reflex.exe`
-(`app/src/vdd.rs`) e extraídos em `%ProgramData%\Reflex\vdd` na instalação.
+(`rust/src/vdd.rs`) e extraídos em `%ProgramData%\Reflex\vdd` na instalação.
 
 Para atualizar: baixar o novo `*.Driver.Only.zip`, conferir a assinatura
 (`Get-AuthenticodeSignature`), substituir os três arquivos e esta nota.

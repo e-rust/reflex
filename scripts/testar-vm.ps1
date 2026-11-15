@@ -30,17 +30,17 @@ param(
     # --my-id sai diferente do Reflex aberto pelo Explorer: passe o ID mostrado
     # na aba Conectar.
     [string]$ViewerId,
-    # Pasta com reflex.exe + DLLs (padrão: dist, montada por empacotar.ps1).
+    # Pasta com reflex.exe + DLLs (padrão: dist\windows, gerada pelo Publicar do Aylis).
     [string]$Origem,
     [switch]$Logs
 )
 
 $ErrorActionPreference = "Stop"
-if (-not $Origem) { $Origem = Join-Path $PSScriptRoot "..\dist" }
-if (-not (Test-Path $Origem)) { throw "Monte o pacote antes: .\scripts\empacotar.ps1" }
+if (-not $Origem) { $Origem = Join-Path $PSScriptRoot "..\dist\windows" }
+if (-not (Test-Path $Origem)) { throw "Publique antes: Publicar na IDE do Aylis (ou aylis-tool publish Reflex.aylisproj)" }
 $Origem = Resolve-Path $Origem
 $Exe = Join-Path $Origem "reflex.exe"
-if (-not (Test-Path $Exe)) { throw "Monte o pacote antes: .\scripts\empacotar.ps1" }
+if (-not (Test-Path $Exe)) { throw "Publique antes: Publicar na IDE do Aylis (ou aylis-tool publish Reflex.aylisproj)" }
 
 # Reusa a sessão de vm-conectar.ps1, se houver (não pede a senha de novo).
 $reusada = $global:ReflexVM -and $global:ReflexVM.State -eq "Opened"

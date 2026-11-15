@@ -3,3 +3,9 @@
 # isto o exe nem abre — 0xC0000135, vcruntime140.dll ausente).
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# Em desenvolvimento (`cargo test`, `cargo run`) as DLLs vêm do `runtime\` do
+# projeto, esteja o target onde estiver (o target-dir pode ficar fora do repositório).
+[env]
+REFLEX_FFMPEG_DIR = { value = "runtime", relative = true }
+REFLEX_OPENH264_DIR = { value = "runtime", relative = true }
