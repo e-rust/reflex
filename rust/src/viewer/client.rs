@@ -42,6 +42,8 @@ pub enum ViewerEvent {
     ClipboardOffer(ClipboardOffer),
     /// Medidas do motor do host (diagnóstico).
     HostReport(String),
+    /// O vídeo passou a chegar neste codec (no 1º quadro e a cada troca).
+    VideoCodec { codec: Codec, width: u32, height: u32 },
 }
 
 /// Resultado do handshake do viewer.
@@ -50,6 +52,8 @@ pub struct Connected {
     pub control: (crate::net::BoxWrite, crate::net::BoxRead),
     pub level: Level,
     pub perms: Perms,
+    /// O que o host sabe codificar (do `Hello` dele).
+    pub host_encoders: Vec<CodecCap>,
 }
 
 /// Conecta e autentica. `on_await` é chamado se o host espera confirmação local.
@@ -95,7 +99,7 @@ pub async fn connect_and_auth(
             _ => {}
         }
     };
-    Ok(Connected { conn, control: (w, r), level, perms })
+    Ok(Connected { conn, control: (w, r), level, perms, host_encoders: host_hello.caps.encoders })
 }
 
 /// Um pedido de administração (só master) antes de abrir o vídeo — o
@@ -145,7 +149,7 @@ pub async fn run(
     outgoing: mpsc::UnboundedReceiver<Control>,
     files: crate::platform::files::SharedOffer,
 ) {
-    let Connected { conn, control, level, perms } = connected;
+    let Connected { conn, control, level, perms, .. } = connected;
     let (mut cw, mut cr) = control;
     let _ = write_msg(&mut cw, &Control::SessionConfig(initial)).await;
     let _ = events.send(ViewerEvent::Connected { level, perms, width: 0, height: 0, codec: Codec::H264 });
@@ -268,9 +272,14 @@ async fn decode_loop<R: tokio::io::AsyncRead + Unpin>(s: &mut R, events: mpsc::U
             Err(_) => break,
         };
         if current != Some(frame.codec) {
-            // Decoder novo ao ver codec diferente (troca em sessão). Tenta hardware.
-            decoder = AvDecoder::open(frame.codec, true).ok().map(|d| Box::new(d) as Box<dyn VideoDecoder>);
+            // Decoder novo ao ver codec diferente (troca em sessão). Vídeo: tenta hardware.
+            decoder = match frame.codec {
+                Codec::Lossless => Some(Box::new(crate::media::lossless_codec::LosslessDecoder::default()) as Box<dyn VideoDecoder>),
+                codec => AvDecoder::open(codec, true).ok().map(|d| Box::new(d) as Box<dyn VideoDecoder>),
+            };
             current = Some(frame.codec);
+            log::info!("vídeo em {} ({}x{})", frame.codec.label(), frame.width, frame.height);
+            let _ = events.send(ViewerEvent::VideoCodec { codec: frame.codec, width: frame.width, height: frame.height });
         }
         let Some(dec) = decoder.as_mut() else { continue };
         let received_ns = crate::media::clock::now_ns();

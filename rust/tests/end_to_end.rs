@@ -25,6 +25,25 @@ fn cert(name: &str) -> (LocalCert, Identity) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "precisa de GPU, monitor e FFmpeg"]
 async fn registered_viewer_sees_real_frames() {
+    let (frames, _) = session_frames(CodecChoice::Auto).await;
+    println!("viewer recebeu {frames} quadros decodificados");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "precisa de monitor"]
+async fn lossless_frames_arrive_at_full_size_and_opaque() {
+    let (frames, last) = session_frames(CodecChoice::Fixed(reflex::proto::codec::Codec::Lossless)).await;
+    let f = last.expect("sem quadro");
+    let monitor = reflex::media::capture::monitors().into_iter().next().expect("um monitor");
+    // Sem perda não escala (o pedido era 1280x720) e a tela chega opaca.
+    assert_eq!((f.width, f.height), (monitor.width, monitor.height), "monitores: {:?}", reflex::media::capture::monitors());
+    assert!(f.data.iter().skip(3).step_by(4).all(|a| *a == 255));
+    println!("sem perda: {frames} quadros de {}x{}", f.width, f.height);
+}
+
+/// Host e viewer de verdade neste processo, com o codec `codec`: quantos
+/// quadros chegaram (até 3) e o último.
+async fn session_frames(codec: CodecChoice) -> (usize, Option<reflex::media::decode::BgraFrame>) {
     unsafe {
         windows::Win32::System::Power::SetThreadExecutionState(windows::Win32::System::Power::ES_DISPLAY_REQUIRED);
     }
@@ -66,16 +85,18 @@ async fn registered_viewer_sees_real_frames() {
 
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel();
     let (_in_tx, in_rx) = mpsc::unbounded_channel();
-    let cfg = SessionConfig { codec: CodecChoice::Auto, max_fps: 30, bitrate_kbps: 6000, max_width: 1280, max_height: 720, monitor: 0, ..Default::default() };
+    let cfg = SessionConfig { codec, max_fps: 30, bitrate_kbps: 6000, max_width: 1280, max_height: 720, monitor: 0, ..Default::default() };
     tokio::spawn(client::run(connected, cfg, ev_tx, in_rx, tokio::sync::mpsc::unbounded_channel().1, Default::default()));
 
     let mut frames = 0;
+    let mut last = None;
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(8);
     while tokio::time::Instant::now() < deadline {
         match tokio::time::timeout(std::time::Duration::from_secs(1), ev_rx.recv()).await {
             Ok(Some(ViewerEvent::Frame(f))) => {
                 assert!(f.width > 0 && !f.data.is_empty());
                 frames += 1;
+                last = Some(f);
                 if frames >= 3 {
                     break;
                 }
@@ -87,7 +108,7 @@ async fn registered_viewer_sees_real_frames() {
     }
     let _ = (host_id, viewer_access);
     assert!(frames >= 1, "o viewer não recebeu quadro nenhum");
-    println!("viewer recebeu {frames} quadros decodificados");
+    (frames, last)
 }
 
 /// Conecta um viewer cadastrado e conta quadros decodificados por `secs`.

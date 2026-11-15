@@ -45,6 +45,10 @@ pub enum Control {
     Bye { reason: String },
     /// Host → viewer: medidas do motor (a cada poucos segundos, pra diagnóstico).
     HostReport(String),
+    /// Viewer → host: medir também quanto a imagem sem perda ocuparia (o
+    /// híbrido imagem + vídeo; sai no `HostReport`). No fim do enum: host
+    /// antigo pula a mensagem.
+    MeasureLossless(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

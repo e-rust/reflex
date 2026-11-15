@@ -124,6 +124,8 @@ fn print_help() {
         [--refine=off|leve|padrao|max]    nitidez com a tela parada
         [--cor=444] [--tamanho=1536x864@150]  cor completa; resolução remota igual à janela
         [--copiar=TEXTO]                  copia TEXTO pro clipboard de lá
+        [--medir-imagem]                  o host mede também a imagem sem perda (lz4, zstd)
+        [--codec=h264|hevc|av1|sem-perda] fixa o codec (padrão: o automático)
 
 Os modos --service, --agent e --user são iniciados pelo próprio Reflex.",
         env!("CARGO_PKG_VERSION")

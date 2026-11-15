@@ -62,6 +62,13 @@ pub fn run(all: &[String]) -> Result<(), String> {
     let late = all.iter().any(|a| a == "--depois");
     // --copiar=TEXTO: depois de 2 s, "copia" TEXTO deste lado (vai pro clipboard de lá).
     let copy = all.iter().find_map(|a| a.strip_prefix("--copiar=")).map(str::to_string);
+    // --medir-imagem: o host mede também a imagem sem perda (o híbrido) e põe no relatório.
+    let measure = all.iter().any(|a| a == "--medir-imagem");
+    // --codec=h264|hevc|av1|sem-perda: fixa o codec (padrão: o automático).
+    let codec = match all.iter().find_map(|a| a.strip_prefix("--codec=")) {
+        None | Some("auto") => CodecChoice::Auto,
+        Some(v) => CodecChoice::Fixed(parse_codec(v).ok_or_else(|| format!("--codec={v}: use h264, hevc, av1, sem-perda ou auto"))?),
+    };
     // --ponto=0.5,0.3: leva o mouse até lá (fração da tela) depois de 2 s.
     let point = all.iter().find_map(|a| a.strip_prefix("--ponto=")).and_then(|v| {
         let (x, y) = v.split_once(',')?;
@@ -72,7 +79,7 @@ pub fn run(all: &[String]) -> Result<(), String> {
     let run_cmd = all.iter().find_map(|a| a.strip_prefix("--executar=")).map(str::to_string);
     let ctrl_v = all.iter().any(|a| a == "--ctrl-v");
     let numpad = all.iter().any(|a| a == "--numpad");
-    let scenario = Scenario { tap, motion, typing, drag, refine, chroma, desired, late, point, copy, files, paste, run_cmd, ctrl_v, numpad };
+    let scenario = Scenario { tap, motion, typing, drag, refine, chroma, desired, late, point, copy, files, paste, run_cmd, ctrl_v, numpad, measure, codec };
     rt.block_on(probe(socket, cert, Duration::from_secs(seconds), &out, scenario))
 }
 
@@ -95,6 +102,21 @@ struct Scenario {
     run_cmd: Option<String>,
     ctrl_v: bool,
     numpad: bool,
+    /// Pedir ao host a medida da imagem sem perda (o híbrido).
+    measure: bool,
+    codec: CodecChoice,
+}
+
+/// O nome de um codec na linha de comando. Pura.
+fn parse_codec(v: &str) -> Option<crate::proto::codec::Codec> {
+    use crate::proto::codec::Codec;
+    match v {
+        "h264" => Some(Codec::H264),
+        "hevc" => Some(Codec::Hevc),
+        "av1" => Some(Codec::Av1),
+        "sem-perda" | "lossless" => Some(Codec::Lossless),
+        _ => None,
+    }
 }
 
 /// Passo do roteiro de `--arquivos`.
@@ -161,7 +183,7 @@ fn parse_size(text: &str) -> Option<crate::proto::msg::DesiredDisplay> {
 }
 
 async fn probe(socket: std::net::SocketAddr, cert: LocalCert, duration: Duration, out: &str, scenario: Scenario) -> Result<(), String> {
-    let Scenario { tap, motion, typing, drag, refine, chroma, desired, late, point, copy, files, paste, run_cmd, ctrl_v, numpad } = scenario;
+    let Scenario { tap, motion, typing, drag, refine, chroma, desired, late, point, copy, files, paste, run_cmd, ctrl_v, numpad, mut measure, codec } = scenario;
     let verbose = files.is_some() || paste || run_cmd.is_some();
     let mut steps = files.as_deref().map(files_script).unwrap_or_default();
     // --executar=CMD: roda CMD lá pelo Executar (Win+R, cola, Enter).
@@ -206,12 +228,14 @@ async fn probe(socket: std::net::SocketAddr, cert: LocalCert, duration: Duration
         .map_err(|e| format!("conexão: {e}"))?;
     println!("ID do host: {}", seen.lock().expect("mutex").clone().unwrap_or_default());
     println!("Conectado em {:?} via {:?}, nível {:?}", t0.elapsed(), connected.conn.transport(), connected.level);
+    let encoders: Vec<String> = connected.host_encoders.iter().map(|c| format!("{}{}", c.codec.label(), if c.hw { " (placa)" } else { "" })).collect();
+    println!("encoders do host: {}", encoders.join(", "));
 
     let conn = connected.conn.clone();
     let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel();
     let (in_tx, in_rx) = tokio::sync::mpsc::unbounded_channel();
     let remote_size = if desired.is_some() { crate::proto::msg::RemoteSize::MatchWindow } else { crate::proto::msg::RemoteSize::Keep };
-    let cfg = SessionConfig { codec: CodecChoice::Auto, max_fps: 30, bitrate_kbps: 6000, max_width: 0, max_height: 0, monitor: 0, refine, chroma, desired: desired.filter(|_| !late), remote_size };
+    let cfg = SessionConfig { codec, max_fps: 30, bitrate_kbps: 6000, max_width: 0, max_height: 0, monitor: 0, refine, chroma, desired: desired.filter(|_| !late), remote_size };
     let (cfg_tx, cfg_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut late_cfg = desired.filter(|_| late).map(|d| SessionConfig { desired: Some(d), ..cfg.clone() });
     let session = tokio::spawn(client::run(connected, cfg, ev_tx, in_rx, cfg_rx, offer.clone()));
@@ -233,6 +257,9 @@ async fn probe(socket: std::net::SocketAddr, cert: LocalCert, duration: Duration
     let mut key_sent: Vec<u64> = Vec::new();
     let mut arrivals: Vec<u64> = Vec::new();
     while start.elapsed() < duration {
+        if std::mem::take(&mut measure) {
+            let _ = cfg_tx.send(crate::proto::msg::Control::MeasureLossless(true));
+        }
         if start.elapsed() >= Duration::from_secs(2) {
             if let Some(text) = copy.take() {
                 println!("copiado deste lado: {text:?}");
@@ -351,6 +378,7 @@ async fn probe(socket: std::net::SocketAddr, cert: LocalCert, duration: Duration
                 }
             }
             Ok(Some(ViewerEvent::HostReport(line))) => println!("{:?}: host: {line}", start.elapsed()),
+            Ok(Some(ViewerEvent::VideoCodec { codec, width, height })) => println!("{:?}: vídeo em {} ({width}x{height})", start.elapsed(), codec.label()),
             Ok(Some(ViewerEvent::CursorPos { x, y, visible, .. })) => {
                 cursor_moves += 1;
                 last_cursor = Some((x, y, visible));
@@ -417,7 +445,9 @@ fn drag_point(t: Duration) -> (u16, u16) {
 fn typing_script(duration: Duration) -> Vec<(Duration, (u16, bool, bool))> {
     const WIN: (u16, bool, bool) = (0x5B, true, false);
     const ESC: (u16, bool, bool) = (0x01, false, false);
-    let mut steps = vec![(Duration::from_millis(500), WIN)];
+    // Esc antes: se o menu Iniciar ficou aberto (de um --motion), a tecla
+    // Windows o fecharia e a digitação cairia na área de trabalho.
+    let mut steps = vec![(Duration::from_millis(200), ESC), (Duration::from_millis(500), WIN)];
     let mut t = Duration::from_millis(1500);
     let mut letter = true;
     while t + Duration::from_millis(600) < duration {
@@ -500,7 +530,7 @@ fn save_png(f: &BgraFrame, path: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{drag_point, tap_key};
+    use super::{drag_point, parse_codec, tap_key};
 
     #[test]
     fn size_with_and_without_scale() {
@@ -532,7 +562,8 @@ mod tests {
     #[test]
     fn typing_script_opens_types_and_closes() {
         let s = super::typing_script(std::time::Duration::from_secs(3));
-        assert_eq!(s.first().unwrap().1 .0, 0x5B);
+        // Esc (fecha o menu que tenha ficado aberto), depois Windows.
+        assert_eq!((s[0].1 .0, s[1].1 .0), (0x01, 0x5B));
         assert_eq!(s.last().unwrap().1 .0, 0x01);
         assert!(s.iter().filter(|(_, k)| k.2).count() >= 8);
     }
@@ -543,6 +574,14 @@ mod tests {
         assert_eq!(super::percentile(&v, 50), 3.0);
         assert_eq!(super::percentile(&v, 100), 5.0);
         assert_eq!(super::percentile(&[], 90), 0.0);
+    }
+
+    #[test]
+    fn codec_names() {
+        use crate::proto::codec::Codec;
+        assert_eq!(parse_codec("sem-perda"), Some(Codec::Lossless));
+        assert_eq!(parse_codec("h264"), Some(Codec::H264));
+        assert_eq!(parse_codec("x265"), None);
     }
 
     #[test]

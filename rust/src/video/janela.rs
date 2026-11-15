@@ -73,6 +73,7 @@ pub fn fit_to_remote(hwnd: isize, remote: (u32, u32), scale: ViewScale) {
     unsafe {
         let _ = SetWindowPos(h(hwnd), None, r.x, r.y, r.w, r.h, SWP_NOZORDER | SWP_NOACTIVATE);
     }
+    log::info!("janela ajustada à tela remota {}x{}: {:?}; área de dentro agora {:?}", remote.0, remote.1, r, client_size(hwnd));
 }
 
 /// Abre a janela com 80% da área útil do monitor, centralizada.

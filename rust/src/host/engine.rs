@@ -14,6 +14,7 @@ use crate::media::capture::ScreenCapture;
 use crate::media::cursor::{to_image, RawCursorShape};
 use crate::media::encode::{EncoderConfig, VideoEncoder, FULL_CHROMA_BACKEND};
 use crate::media::gpu::{fit_even, BgraReadback, Device, Nv12Converter};
+use crate::media::lossless::{LosslessMeter, LosslessStats};
 use crate::media::pacing::{Decision, Pacer};
 use crate::media::{caps, clock};
 use crate::platform::desktop::DesktopFollower;
@@ -45,6 +46,8 @@ pub struct EngineConfig {
 pub enum EngineCmd {
     Reconfigure(EngineConfig),
     RequestKeyframe,
+    /// Medir também a imagem sem perda (o híbrido; só no caminho de CPU).
+    MeasureLossless(bool),
     Stop,
 }
 
@@ -121,6 +124,8 @@ struct Shared {
     in_flight: InFlight,
     stats: Stats,
     cursor: CursorTracker,
+    /// Medida da imagem sem perda, ligada pelo viewer (`MeasureLossless`).
+    lossless: Option<LosslessMeter>,
 }
 
 /// Posição do cursor pra o viewer. A captura (DXGI) informa quando o cursor
@@ -195,6 +200,8 @@ pub struct Stats {
     pub prepare: Timer,
     pub upload: Timer,
     pub codec: Timer,
+    /// A medida da imagem sem perda, quando ligada.
+    pub lossless: LosslessStats,
 }
 
 impl Stats {
@@ -204,8 +211,9 @@ impl Stats {
     pub fn summary(&self, now_ns: u64) -> String {
         let secs = (now_ns.saturating_sub(self.since_ns) as f64 / 1e9).max(0.001);
         let n = self.frames;
+        let lossless = if self.lossless.frames > 0 { format!(" | {}", self.lossless.summary(secs)) } else { String::new() };
         format!(
-            "motor ({secs:.1} s): {} imagens novas, {} quadros{} ({:.1}/s, {} KB/s) | captura {:.1} ms | preparo {:.1} ms | subida {:.1} ms (máx {:.1}) | codec {:.1} ms (máx {:.1})",
+            "motor ({secs:.1} s): {} imagens novas, {} quadros{} ({:.1}/s, {} KB/s) | captura {:.1} ms | preparo {:.1} ms | subida {:.1} ms (máx {:.1}) | codec {:.1} ms (máx {:.1}){lossless}",
             self.images,
             n,
             if self.refines > 0 { format!(" ({} de refino)", self.refines) } else { String::new() },
@@ -279,6 +287,12 @@ pub fn run(initial: EngineConfig, cmds: Receiver<EngineCmd>, events: Sender<Engi
             }
             // Sem captura aberta, a próxima já começa por keyframe.
             Ok(EngineCmd::RequestKeyframe) => state.iter_mut().for_each(|s| s.pacer.request_key()),
+            Ok(EngineCmd::MeasureLossless(on)) => {
+                if on && state.as_ref().is_some_and(|s| s.readback.is_none()) {
+                    log::warn!("medida sem perda: só no caminho de CPU (placa de software); aqui não mede");
+                }
+                shared.lossless = on.then(LosslessMeter::default);
+            }
             Err(TryRecvError::Empty) => {}
         }
 
@@ -309,6 +323,9 @@ pub fn run(initial: EngineConfig, cmds: Receiver<EngineCmd>, events: Sender<Engi
         };
 
         if let Some(line) = shared.stats.take_if_due(clock::now_ns()) {
+            // Que encoder (e de que tamanho): o pedido pode ter caído noutro codec.
+            let (w, h) = st.encoder.size();
+            let line = format!("{} {w}x{h} | {line}", st.encoder.name());
             let line = match cpu.sample() {
                 Some(f) => format!("{line} | CPU da máquina {:.0}%", f * 100.0),
                 None => line,
@@ -377,23 +394,28 @@ impl State {
     /// Nova captura + conversor + encoder. O `Pacer` novo começa por keyframe.
     fn start(cfg: &EngineConfig) -> Result<Self, String> {
         let (dev, mut capture) = ScreenCapture::open(cfg.monitor).map_err(|e| e.to_string())?;
-        let (width, height) = fit_even(capture.image.width, capture.image.height, cfg.max_width, cfg.max_height);
+        // Sem perda: a tela no tamanho real (não escala; já é 4:4:4) e sempre
+        // pelo caminho de CPU (o BGRA lido só nas regiões alteradas).
+        let lossless = cfg.codec == Codec::Lossless;
+        let (width, height) = if lossless { (capture.image.width, capture.image.height) } else { fit_even(capture.image.width, capture.image.height, cfg.max_width, cfg.max_height) };
         let conv = Nv12Converter::new(&dev, width, height).map_err(|e| e.to_string())?;
         let unscaled = (width, height) == (capture.image.width, capture.image.height);
-        // 4:4:4 só sai pelo caminho BGRA, que não escala, e só com o x264.
+        // 4:4:4 em vídeo só sai pelo caminho BGRA, que não escala, e só com o x264.
         let full = caps::has_full_chroma(caps::encoders());
-        let chroma444 = cfg.chroma == Chroma::Yuv444 && unscaled && full;
-        if cfg.chroma == Chroma::Yuv444 && !chroma444 {
+        let chroma444 = !lossless && cfg.chroma == Chroma::Yuv444 && unscaled && full;
+        if !lossless && cfg.chroma == Chroma::Yuv444 && !chroma444 {
             log::warn!("cor 4:4:4 pedida, mas {}: fica 4:2:0", if full { format!("com escala {width}x{height}") } else { "não há encoder que faça (o x264 não está na build do FFmpeg)".into() });
         }
         let encoder = open_encoder(&dev, cfg, width, height, chroma444)?;
-        let readback = if (dev.is_software() || chroma444) && encoder.accepts_bgra() && unscaled {
-            log::info!("conversão na CPU ({})", if chroma444 { "cor 4:4:4" } else { "placa de software" });
+        let readback = if (dev.is_software() || chroma444 || lossless) && encoder.accepts_bgra() && unscaled {
+            log::info!("leitura na CPU ({})", if lossless { "sem perda" } else if chroma444 { "cor 4:4:4" } else { "placa de software" });
             Some(BgraReadback::new(&dev, &capture.image).map_err(|e| e.to_string())?)
         } else {
             None
         };
-        let pacer = Pacer::new(cfg.max_fps as u32).with_refine(cfg.refine.plan());
+        // Sem perda não refina: a tela parada já chegou exata.
+        let refine = if lossless { Refine::Off } else { cfg.refine };
+        let pacer = Pacer::new(cfg.max_fps as u32).with_refine(refine.plan());
         capture.partial = readback.is_some();
         Ok(Self { cfg: cfg.clone(), dev, capture, conv, readback, encoder, pacer, width, height, damage: crate::media::damage::Damage::Full })
     }
@@ -412,6 +434,11 @@ impl State {
             Err(e) => return Err(StepError::Fatal(e.to_string())),
         };
         if info.new_image {
+            if shared.lossless.is_some() {
+                let (w, h) = (self.capture.image.width as u64, self.capture.image.height as u64);
+                shared.stats.lossless.changed_px += info.dirty.as_ref().map_or(w * h, |d| d.iter().map(|r| r.area()).sum());
+                shared.stats.lossless.moved_px += info.moved_px;
+            }
             self.damage.add(info.dirty.as_deref());
             self.pacer.on_new_image();
             shared.stats.images += 1;
@@ -437,13 +464,24 @@ impl State {
         };
         {
             let capture_ns = clock::now_ns();
+            let mut measured_us = 0;
             let packets = match &self.readback {
                 Some(rb) => {
                     let encoder = &mut self.encoder;
-                    let regions = self.damage.take().regions(self.capture.image.width, self.capture.image.height);
+                    let (w, h) = (self.capture.image.width, self.capture.image.height);
+                    let regions = self.damage.take().regions(w, h);
                     let regions = regions.as_deref();
-                    rb.read(&self.dev, &self.capture.image.tex, regions, |bgra, stride| encoder.encode_bgra(bgra, stride, regions, force_key))
-                        .map_err(|e| StepError::Fatal(e.to_string()))?
+                    let (meter, lossless) = (shared.lossless.as_mut(), &mut shared.stats.lossless);
+                    rb.read(&self.dev, &self.capture.image.tex, regions, |bgra, stride| {
+                        // O híbrido: o que estes mesmos pixels ocupariam sem perda.
+                        if let Some(m) = meter.filter(|_| !refine) {
+                            let t = clock::now_ns();
+                            *lossless += m.measure(bgra, stride, w, h, regions);
+                            measured_us = ((clock::now_ns() - t) / 1000) as u32;
+                        }
+                        encoder.encode_bgra(bgra, stride, regions, force_key)
+                    })
+                    .map_err(|e| StepError::Fatal(e.to_string()))?
                 }
                 None => {
                     self.conv.convert(&self.dev, &self.capture.image.srv);
@@ -452,7 +490,8 @@ impl State {
             }
             .map_err(|e| StepError::Fatal(e.to_string()))?;
             let timing = self.encoder.last_timing();
-            let total_us = ((clock::now_ns() - capture_ns) / 1000) as u32;
+            // A medida sem perda não entra no tempo do quadro.
+            let total_us = (((clock::now_ns() - capture_ns) / 1000) as u32).saturating_sub(measured_us);
             shared.stats.frames += 1;
             shared.stats.refines += refine as u32;
             shared.stats.prepare.add(total_us.saturating_sub(timing.upload_us + timing.codec_us));

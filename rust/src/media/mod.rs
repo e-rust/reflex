@@ -23,6 +23,8 @@ pub mod decode;
 pub mod encode;
 pub mod ffi;
 pub mod gpu;
+pub mod lossless;
+pub mod lossless_codec;
 pub mod openh264enc;
 pub mod pacing;
 pub mod yuv;

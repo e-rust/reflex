@@ -93,6 +93,7 @@ impl Estado {
     /// pedido (resolução "igual à janela") e as travas iguais às daqui.
     pub fn janela_pronta(&mut self, hwnd: isize) {
         self.hwnd = hwnd;
+        log::info!("janela de vídeo pronta (hwnd {hwnd:#x}, {} DPI)", janela::dpi(hwnd));
         self.teclado = teclado::KeyboardHook::install(hwnd, self.input.clone());
         if self.teclado.is_none() {
             log::warn!("gancho de teclado indisponível: atalhos do Windows ficam neste PC");

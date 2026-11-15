@@ -102,6 +102,8 @@ pub struct FrameInfo {
     pub cursor_shape: Option<RawCursorShape>,
     /// O que a imagem nova mudou (`None` = não se sabe: tudo).
     pub dirty: Option<Vec<crate::media::damage::Region>>,
+    /// Dessa área, quanto só mudou de lugar (os *move rects*: rolagem, arrasto).
+    pub moved_px: u64,
 }
 
 /// Duplicação de um monitor.
@@ -164,10 +166,14 @@ impl ScreenCapture {
             && let Some(res) = res
         {
             let tex: ID3D11Texture2D = res.cast()?;
-            let dirty = if self.fresh { None } else { self.changed(&fi) };
+            let (dirty, moved_px) = match self.changed(&fi).filter(|_| !self.fresh) {
+                Some((regions, moved)) => (Some(regions), moved),
+                None => (None, 0),
+            };
             self.fresh = false;
             crate::media::gpu::copy_regions(dev, &self.image.tex, &tex, dirty.as_deref().filter(|_| self.partial));
             info.dirty = dirty;
+            info.moved_px = moved_px;
             info.new_image = true;
         }
         if fi.LastMouseUpdateTime != 0 {
@@ -198,7 +204,8 @@ impl ScreenCapture {
 impl ScreenCapture {
     /// Retângulos que a imagem atual mudou: os destinos dos movidos (janela
     /// arrastada) e os sujos. `None` se a DXGI não disser.
-    fn changed(&self, fi: &DXGI_OUTDUPL_FRAME_INFO) -> Option<Vec<crate::media::damage::Region>> {
+    /// Os retângulos alterados e a área dos que só mudaram de lugar.
+    fn changed(&self, fi: &DXGI_OUTDUPL_FRAME_INFO) -> Option<(Vec<crate::media::damage::Region>, u64)> {
         use windows::Win32::Foundation::RECT;
         use windows::Win32::Graphics::Dxgi::DXGI_OUTDUPL_MOVE_RECT;
         let size = fi.TotalMetadataBufferSize as usize;
@@ -212,11 +219,12 @@ impl ScreenCapture {
         let cap = (moves.len() * std::mem::size_of::<DXGI_OUTDUPL_MOVE_RECT>()) as u32;
         unsafe { self.dup.GetFrameMoveRects(cap, moves.as_mut_ptr(), &mut bytes) }.ok()?;
         out.extend(moves.iter().take(bytes as usize / std::mem::size_of::<DXGI_OUTDUPL_MOVE_RECT>()).map(|m| region(&m.DestinationRect)));
+        let moved_px = out.iter().map(crate::media::damage::Region::area).sum();
         let mut dirty = vec![RECT::default(); size / std::mem::size_of::<RECT>() + 1];
         let cap = (dirty.len() * std::mem::size_of::<RECT>()) as u32;
         unsafe { self.dup.GetFrameDirtyRects(cap, dirty.as_mut_ptr(), &mut bytes) }.ok()?;
         out.extend(dirty.iter().take(bytes as usize / std::mem::size_of::<RECT>()).map(region));
-        Some(out)
+        Some((out, moved_px))
     }
 }
 

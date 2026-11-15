@@ -30,11 +30,13 @@ pub trait VideoDecoder: Send {
     fn decode(&mut self, packet: &[u8]) -> Result<Option<BgraFrame>>;
 }
 
-fn decoder_name(codec: Codec) -> &'static str {
+/// O decoder do libavcodec (o sem perda não passa pelo FFmpeg).
+fn decoder_name(codec: Codec) -> Option<&'static str> {
     match codec {
-        Codec::H264 => "h264",
-        Codec::Hevc => "hevc",
-        Codec::Av1 => "av1",
+        Codec::H264 => Some("h264"),
+        Codec::Hevc => Some("hevc"),
+        Codec::Av1 => Some("av1"),
+        Codec::Lossless => None,
     }
 }
 
@@ -69,7 +71,7 @@ impl AvDecoder {
         if codec == Codec::Av1 && !hardware {
             return Err("AV1 só decodifica por hardware nesta build do FFmpeg".into());
         }
-        let name = decoder_name(codec);
+        let name = decoder_name(codec).ok_or_else(|| MediaError::Msg(format!("{} não decodifica pelo FFmpeg", codec.label())))?;
         let dec = unsafe { (a.codec.avcodec_find_decoder_by_name)(to_cstring(name).as_ptr()) };
         if dec.is_null() {
             return Err(MediaError::Msg(format!("decoder \"{name}\" não existe")));

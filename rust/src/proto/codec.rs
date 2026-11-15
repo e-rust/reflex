@@ -7,10 +7,13 @@ pub enum Codec {
     H264,
     Hevc,
     Av1,
+    /// Imagem sem perda: só os retângulos que mudaram, em zstd
+    /// (`docs/hibrido.md`). CPU pura: todo host e todo viewer fazem.
+    Lossless,
 }
 
 impl Codec {
-    /// Preferência no modo Auto: o mais eficiente primeiro.
+    /// Os codecs de vídeo na preferência do modo Auto: o mais eficiente primeiro.
     pub const BY_EFFICIENCY: [Codec; 3] = [Codec::Av1, Codec::Hevc, Codec::H264];
 
     pub fn label(self) -> &'static str {
@@ -18,6 +21,7 @@ impl Codec {
             Codec::H264 => "H.264",
             Codec::Hevc => "HEVC",
             Codec::Av1 => "AV1",
+            Codec::Lossless => "sem perda",
         }
     }
 }
@@ -68,7 +72,8 @@ fn pair(encoders: &[CodecCap], decoders: &[CodecCap], codec: Codec) -> Option<(C
 /// - `Fixed`: usa o codec pedido se o host codifica e o viewer decodifica;
 ///   senão cai no Auto (`fell_back`).
 /// - `Auto`: o mais eficiente com hardware dos dois lados (AV1 > HEVC > H.264);
-///   sem par de hardware, H.264 (o mais barato em CPU); por fim qualquer
+///   host sem encoder de placa (VM, servidor): sem perda (de 3 a 20 vezes
+///   menos CPU que o H.264, medido); sem nada disso, H.264; por fim qualquer
 ///   codec em comum.
 pub fn select_codec(choice: CodecChoice, encoders: &[CodecCap], decoders: &[CodecCap]) -> Option<Selection> {
     let make = |(e, d): (CodecCap, CodecCap), fell_back| Selection { codec: e.codec, hw_encode: e.hw, hw_decode: d.hw, fell_back };
@@ -82,6 +87,11 @@ pub fn select_codec(choice: CodecChoice, encoders: &[CodecCap], decoders: &[Code
 
     let both_hw = Codec::BY_EFFICIENCY.into_iter().filter_map(|c| pair(encoders, decoders, c)).find(|(e, d)| e.hw && d.hw);
     if let Some(p) = both_hw {
+        return Some(make(p, fell_back));
+    }
+    if !encoders.iter().any(|e| e.hw)
+        && let Some(p) = pair(encoders, decoders, Codec::Lossless)
+    {
         return Some(make(p, fell_back));
     }
     if let Some(p) = pair(encoders, decoders, Codec::H264) {
@@ -124,6 +134,29 @@ mod tests {
         let s = select_codec(CodecChoice::Auto, &enc, &dec).unwrap();
         assert_eq!(s.codec, Codec::H264);
         assert!(!s.hw_encode);
+    }
+
+    #[test]
+    fn host_without_hardware_encoder_sends_lossless() {
+        let enc = [sw(Codec::H264), sw(Codec::Lossless)];
+        let dec = [hw(Codec::H264), sw(Codec::Lossless)];
+        let s = select_codec(CodecChoice::Auto, &enc, &dec).unwrap();
+        assert_eq!(s.codec, Codec::Lossless);
+        assert!(!s.hw_encode && !s.fell_back);
+    }
+
+    #[test]
+    fn host_with_hardware_encoder_keeps_video_even_if_the_viewer_decodes_in_software() {
+        let enc = [hw(Codec::H264), sw(Codec::Lossless)];
+        let dec = [sw(Codec::H264), sw(Codec::Lossless)];
+        assert_eq!(select_codec(CodecChoice::Auto, &enc, &dec).unwrap().codec, Codec::H264);
+    }
+
+    #[test]
+    fn lossless_can_be_asked_for_explicitly() {
+        let enc = [hw(Codec::H264), sw(Codec::Lossless)];
+        let dec = [hw(Codec::H264), sw(Codec::Lossless)];
+        assert_eq!(select_codec(CodecChoice::Fixed(Codec::Lossless), &enc, &dec).unwrap().codec, Codec::Lossless);
     }
 
     #[test]

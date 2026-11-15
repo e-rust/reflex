@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::net::Connection;
 use crate::platform::input::{virtual_screen, Injector, Rect};
-use crate::proto::codec::Codec;
+use crate::proto::codec::{Codec, CodecCap};
 use crate::proto::frame::{read_known, write_msg};
 use crate::proto::msg::{AdminRequest, AdminResponse, Chroma, Control, Datagram, Input, Monitor, RemoteSize, SessionConfig, Stats, UniKind};
 use crate::proto::perms::Perms;
@@ -56,12 +56,15 @@ pub fn effective_fps(requested: u8, hw_encode: bool, cpu_cores: usize) -> u8 {
 /// dois lados suportam. Pura (testada).
 pub fn resolve_engine_config(req: &SessionConfig, params: &SessionParams) -> Result<EngineConfig, String> {
     let mut sel = crate::proto::codec::select_codec(req.codec, &params.encoders, &params.decoders).ok_or("nenhum codec em comum")?;
-    // Cor completa: H.264 pelo x264, decodificado em software no viewer
-    // (encoders e decoders de placa de vídeo não fazem 4:4:4). Sem o x264,
-    // fica o 4:2:0 de sempre (com a placa, se houver).
-    if req.chroma == Chroma::Yuv444 && params.full_chroma {
-        sel.codec = Codec::H264;
-        sel.hw_encode = false;
+    // Cor completa: o sem perda (é 4:4:4 por natureza), se os dois lados
+    // fazem; senão H.264 pelo x264, decodificado em software no viewer
+    // (encoders e decoders de placa de vídeo não fazem 4:4:4). Sem nenhum
+    // dos dois, fica o 4:2:0 de sempre (com a placa, se houver).
+    let lossless = |caps: &[CodecCap]| caps.iter().any(|c| c.codec == Codec::Lossless);
+    if req.chroma == Chroma::Yuv444 && lossless(&params.encoders) && lossless(&params.decoders) {
+        (sel.codec, sel.hw_encode) = (Codec::Lossless, false);
+    } else if req.chroma == Chroma::Yuv444 && params.full_chroma {
+        (sel.codec, sel.hw_encode) = (Codec::H264, false);
     }
     let monitor = if params.monitors.iter().any(|m| m.id == req.monitor) { req.monitor } else { params.monitors.first().map(|m| m.id).unwrap_or(0) };
     Ok(EngineConfig {
@@ -169,6 +172,7 @@ pub async fn serve(conn: Arc<dyn Connection>, params: SessionParams, initial: Se
                 }
             }
             Control::RequestKeyframe => hub.request_keyframe(),
+            Control::MeasureLossless(on) => hub.measure_lossless(on),
             Control::Stats(_s) => { /* registrado pela camada de cima quando quiser */ }
             Control::SessionConfig(req) => {
                 match resolve_engine_config(&req, &params) {
@@ -359,6 +363,18 @@ mod tests {
         let req = SessionConfig { codec: CodecChoice::Auto, chroma: Chroma::Yuv444, ..Default::default() };
         let cfg = resolve_engine_config(&req, &params()).unwrap();
         assert_eq!((cfg.codec, cfg.hw_encode, cfg.chroma), (Codec::H264, false, Chroma::Yuv444));
+    }
+
+    #[test]
+    fn full_chroma_prefers_lossless_when_both_sides_have_it() {
+        let mut p = params();
+        p.encoders.push(CodecCap { codec: Codec::Lossless, hw: false });
+        p.decoders.push(CodecCap { codec: Codec::Lossless, hw: false });
+        let req = SessionConfig { codec: CodecChoice::Auto, chroma: Chroma::Yuv444, ..Default::default() };
+        assert_eq!(resolve_engine_config(&req, &p).unwrap().codec, Codec::Lossless);
+        // 4:2:0: a placa, como sempre.
+        let plain = SessionConfig { codec: CodecChoice::Auto, ..Default::default() };
+        assert_eq!(resolve_engine_config(&plain, &p).unwrap().codec, Codec::Av1);
     }
 
     #[test]

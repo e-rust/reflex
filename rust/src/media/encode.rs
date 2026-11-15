@@ -114,6 +114,8 @@ pub const FULL_CHROMA_BACKEND: &str = "libx264";
 pub fn open_encoder(dev: &Device, cfg: &EncoderConfig) -> Result<Box<dyn VideoEncoder>> {
     if cfg.backend == crate::media::openh264enc::BACKEND {
         Ok(Box::new(crate::media::openh264enc::OpenH264Encoder::open(cfg)?))
+    } else if cfg.backend == crate::media::lossless_codec::BACKEND {
+        Ok(Box::new(crate::media::lossless_codec::LosslessEncoder::open(cfg)?))
     } else {
         Ok(Box::new(AvEncoder::open(dev, cfg)?))
     }
@@ -135,6 +137,8 @@ pub fn candidates(codec: Codec, vendor: u32) -> Vec<&'static str> {
         (Codec::Av1, VENDOR_AMD) => &["av1_amf"],
         (Codec::Av1, VENDOR_NVIDIA) => &["av1_nvenc"],
         (Codec::Av1, _) => &[],
+        // Sem perda: não é do FFmpeg (ver `caps::probe_encoders`).
+        (Codec::Lossless, _) => &[],
     };
     let mut v = hw.to_vec();
     // CPU: só H.264 é viável em tempo real (§4.2). O openh264 (BSD) é o de
@@ -308,7 +312,7 @@ pub fn parameter_sets(codec: Codec, packet: &[u8]) -> Vec<u8> {
         match codec {
             Codec::H264 => matches!(h & 0x1F, 7 | 8),
             Codec::Hevc => matches!((h >> 1) & 0x3F, 32..=34),
-            Codec::Av1 => false,
+            Codec::Av1 | Codec::Lossless => false,
         }
     };
     let mut out = Vec::new();

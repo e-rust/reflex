@@ -56,6 +56,8 @@ pub fn probe_encoders(dev: &Device) -> Vec<EncoderChoice> {
             }
         }
     }
+    // Sem perda: CPU pura, sempre disponível (não passa pelo teste de NV12).
+    out.push(EncoderChoice { cap: CodecCap { codec: Codec::Lossless, hw: false }, backend: crate::media::lossless_codec::BACKEND });
     out
 }
 
@@ -101,6 +103,7 @@ pub fn decoders_from_profiles(profiles: &[GUID]) -> Vec<CodecCap> {
     // Software: esta build tem h264 e hevc (AV1 só por hardware).
     out.push(CodecCap { codec: Codec::H264, hw: false });
     out.push(CodecCap { codec: Codec::Hevc, hw: false });
+    out.push(CodecCap { codec: Codec::Lossless, hw: false });
     out
 }
 

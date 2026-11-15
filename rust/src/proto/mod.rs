@@ -19,7 +19,8 @@ pub mod perms;
 /// 6: arquivos no clipboard (`ClipboardOffer::files`, pedidos por stream).
 /// 7: `Control::HostReport`.
 /// 8: `Input::Locks` (Caps/Num/Scroll Lock sincronizados, não como teclas).
-pub const PROTOCOL_VERSION: u16 = 8;
+/// 9: `Codec::Lossless` (imagem sem perda) e `Control::MeasureLossless`.
+pub const PROTOCOL_VERSION: u16 = 9;
 
 /// Mensagem quando as versões não batem. Pura.
 pub fn version_mismatch(theirs: u16, who: &str) -> Option<String> {

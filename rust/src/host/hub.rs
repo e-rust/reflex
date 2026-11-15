@@ -146,6 +146,13 @@ impl EngineHub {
         }
     }
 
+    /// Liga ou desliga a medida da imagem sem perda no motor (diagnóstico).
+    pub fn measure_lossless(&self, on: bool) {
+        if let Some(r) = &self.inner().engine {
+            let _ = r.cmd_tx.send(EngineCmd::MeasureLossless(on));
+        }
+    }
+
     /// Monitor que o motor está mostrando (pra traduzir o mouse).
     pub fn monitor(&self) -> Option<u32> {
         self.inner().current.as_ref().map(|c| c.monitor)
