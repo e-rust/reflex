@@ -24,6 +24,7 @@
   "publish": {
     "app_name": "Reflex",
     "version": "0.1.0",
+    "icon": "assets/images/logo.png",
     "publisher": "e-rust",
     "windows": {
       "files": [
@@ -48,6 +49,5 @@
     "android": "core",
     "ios": "core",
     "web": "layout"
-  },
-  "sdk": "crates.io"
+  }
 }

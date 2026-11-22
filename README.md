@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/images/logo.png" alt="Reflex" width="200">
+</p>
+
 # Reflex
 
 Controle remoto de tela para Windows, em Rust, para a rede local. Pensado para
@@ -44,7 +48,8 @@ O Reflex é um projeto do [Aylis](https://crates.io/crates/aylis)
 | `rust/generated/` | o que a IDE gera dos forms (não se edita à mão) |
 | `runtime/` | onde a IDE põe o exe, ao lado das DLLs (FFmpeg, openh264) |
 | `dist/` | o que o Publicar gera (`dist\windows`) |
-| `assets/`, `themes/`, `locales/` | imagens, tema e traduções do Aylis |
+| `assets/`, `themes/`, `locales/` | imagens (o logo, `assets/images/logo.png`, é o ícone do app), fontes, tema e traduções |
+| `.aylis/app-icon.ico` | o ícone do Windows, gerado pela IDE a partir do logo (vai no exe) |
 
 Os módulos de `rust/src/`:
 

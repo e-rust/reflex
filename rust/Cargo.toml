@@ -20,7 +20,7 @@ path = "src/main.rs"
 # De onde vem o aylis: a chave `sdk` do projeto (o crates.io, ou uma pasta). As features
 # (dados, mídia...) são as que os forms usam; a IDE atualiza a lista a cada "Gerar código".
 [dependencies]
-aylis = { version = "0.4.1-beta.1", default-features = false, features = [] }
+aylis = { path = "../.aylis/sdk/crates/aylis", default-features = false, features = [] }
 # Protocolo, rede e autenticação (proto, net, auth).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -97,29 +97,29 @@ dev = ["aylis/dev"]
 # Embute forms, temas e assets no executável (e o ícone no .exe do Windows); o
 # embed-resource põe o manifesto do Reflex (DPI, UTF-8, console destacado).
 [build-dependencies]
-aylis-build = { version = "0.4.1-beta.1" }
+aylis-build = { path = "../.aylis/sdk/crates/aylis-build" }
 embed-resource = "3"
 
 # aylis:render: o renderizador de cada plataforma (Projeto → Opções; a IDE reescreve este bloco)
 # Windows: Direct2D
 [target.'cfg(windows)'.dependencies]
-aylis = { version = "0.4.1-beta.1", default-features = false, features = ["d2d"] }
+aylis = { path = "../.aylis/sdk/crates/aylis", default-features = false, features = ["d2d"] }
 
 # Linux: Automático (Skia GPU, senão CPU)
 [target.'cfg(target_os = "linux")'.dependencies]
-aylis = { version = "0.4.1-beta.1", default-features = false, features = ["skia-gpu", "skia-cpu"] }
+aylis = { path = "../.aylis/sdk/crates/aylis", default-features = false, features = ["skia-gpu", "skia-cpu"] }
 
 # macOS: Automático (Skia GPU, senão CPU)
 [target.'cfg(target_os = "macos")'.dependencies]
-aylis = { version = "0.4.1-beta.1", default-features = false, features = ["skia-gpu", "skia-cpu"] }
+aylis = { path = "../.aylis/sdk/crates/aylis", default-features = false, features = ["skia-gpu", "skia-cpu"] }
 
 # Android: Automático (Skia GPU, senão CPU)
 [target.'cfg(target_os = "android")'.dependencies]
-aylis = { version = "0.4.1-beta.1", default-features = false, features = ["skia-gpu", "skia-cpu"] }
+aylis = { path = "../.aylis/sdk/crates/aylis", default-features = false, features = ["skia-gpu", "skia-cpu"] }
 
 # iOS: Skia CPU
 [target.'cfg(target_os = "ios")'.dependencies]
-aylis = { version = "0.4.1-beta.1", default-features = false, features = ["skia-cpu"] }
+aylis = { path = "../.aylis/sdk/crates/aylis", default-features = false, features = ["skia-cpu"] }
 
 # aylis:render-end
 

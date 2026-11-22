@@ -40,7 +40,7 @@ pub fn video_fechou(ui: &mut Ui) {
 
 /// Uma lista de opções: os itens (de `all`) e o valor atual escolhido.
 fn preencher<T: Copy + PartialEq>(ui: &mut Ui, combo: ComboBox, all: &[T], label: fn(T) -> &'static str, atual: T) {
-    combo.set_items(ui, escolha::items(all, label));
+    combo.set_items(ui, &escolha::items(all, label));
     combo.set_item_index(ui, escolha::index_of(all, &atual));
 }
 
@@ -56,7 +56,7 @@ fn mostrar_maquina(ui: &mut Ui, c: &FrmPrincipalComponents, r: &maquina::Resumo)
     c.lblServico.set_text(ui, r.servico.as_str());
     c.lblIdMaquina.set_text(ui, r.id.as_str());
     c.lblEnderecos.set_text(ui, r.enderecos.as_str());
-    c.lvUsuarios.set_items(ui, r.usuarios.as_str());
+    c.lvUsuarios.set_items(ui, &r.usuarios);
     c.lblConvite.set_text(ui, r.convite.as_str());
     c.btnCompartilhar.set_text(ui, r.botao_compartilhar);
     c.btnCompartilhar.set_enabled(ui, r.pode_compartilhar);

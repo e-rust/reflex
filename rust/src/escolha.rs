@@ -4,10 +4,9 @@
 //! Cada opção é um enum com `ALL` (a ordem da lista) e `label` (o texto): a
 //! lista sai dele, sem repetir os textos no form.
 
-/// Os itens de um `ComboBox`, separados por `;` (o separador do Aylis), na
-/// ordem de `all`.
-pub fn items<T: Copy>(all: &[T], label: fn(T) -> &'static str) -> String {
-    all.iter().map(|v| label(*v).replace(';', ",")).collect::<Vec<_>>().join(";")
+/// Os itens de um `ComboBox`, na ordem de `all`.
+pub fn items<T: Copy>(all: &[T], label: fn(T) -> &'static str) -> Vec<&'static str> {
+    all.iter().map(|v| label(*v)).collect()
 }
 
 /// O índice de `value` em `all` (0, o primeiro, se não estiver).
@@ -41,8 +40,8 @@ mod tests {
     }
 
     #[test]
-    fn items_follow_the_order_and_escape_the_separator() {
-        assert_eq!(items(&TODAS, nome), "Azul;Verde, claro");
+    fn items_follow_the_order() {
+        assert_eq!(items(&TODAS, nome), ["Azul", "Verde; claro"]);
     }
 
     #[test]

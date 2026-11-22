@@ -6,15 +6,16 @@ use crate::platform::service_ctrl::{self, ServiceState};
 use crate::proto::msg::{AdminRequest, AdminResponse, InviteInfo, MachineStatus, UserInfo};
 use crate::proto::perms::Level;
 use crate::configclient;
+use crate::generated::ListViewItem;
 
 /// Tudo o que a aba mostra, já em texto.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Resumo {
     pub servico: String,
     pub id: String,
     pub enderecos: String,
-    /// Os usuários no formato do `ListView` (`Nome|detalhe;…`).
-    pub usuarios: String,
+    /// Os usuários, um item do `ListView` cada (nome; nível e ID).
+    pub usuarios: Vec<ListViewItem>,
     pub convite: String,
     pub botao_compartilhar: &'static str,
     /// Dá pra ligar/desligar o compartilhamento (o serviço respondeu).
@@ -71,7 +72,7 @@ pub fn resumo(leitura: &Leitura) -> Resumo {
             servico,
             id: "ID desta máquina: — (ative o acesso para gerar)".into(),
             enderecos: "Endereços: —".into(),
-            usuarios: String::new(),
+            usuarios: Vec::new(),
             convite: String::new(),
             botao_compartilhar: "Compartilhar acesso",
             pode_compartilhar: false,
@@ -95,7 +96,7 @@ pub fn resumo(leitura: &Leitura) -> Resumo {
             servico,
             id: format!("Não foi possível ler o serviço: {e}"),
             enderecos: "Endereços: —".into(),
-            usuarios: String::new(),
+            usuarios: Vec::new(),
             convite: String::new(),
             botao_compartilhar: "Compartilhar acesso",
             pode_compartilhar: false,
@@ -111,11 +112,9 @@ fn convite(invite: Option<&InviteInfo>) -> (String, &'static str) {
     }
 }
 
-/// Os usuários no formato do `ListView`: `Nome|Nível · ID`, separados por `;`
-/// (os separadores que aparecerem nos nomes viram vírgula).
-fn lista_usuarios(usuarios: &[UserInfo]) -> String {
-    let limpo = |s: &str| s.replace([';', '|'], ",");
-    usuarios.iter().map(|u| format!("{}|{} · {}", limpo(&u.name), nivel(u.level), limpo(&u.access_id))).collect::<Vec<_>>().join(";")
+/// Os usuários como itens do `ListView`: o nome e, embaixo, `Nível · ID`.
+fn lista_usuarios(usuarios: &[UserInfo]) -> Vec<ListViewItem> {
+    usuarios.iter().map(|u| ListViewItem { title: u.name.clone(), detail: format!("{} · {}", nivel(u.level), u.access_id) }).collect()
 }
 
 #[cfg(test)]
@@ -151,7 +150,7 @@ mod tests {
         let r = resumo(&Leitura { estado: ServiceState::Running, status: Ok(status(None, true)), usuarios: vec![usuario("Ana; Paula", Level::Master)] });
         assert_eq!(r.id, "ID desta máquina: ABCD-1234");
         assert_eq!(r.enderecos, "Endereços: 192.168.0.10:47800");
-        assert_eq!(r.usuarios, "Ana, Paula|Master · VUNS-P7N6");
+        assert_eq!(r.usuarios, [ListViewItem { title: "Ana; Paula".into(), detail: "Master · VUNS-P7N6".into() }]);
         assert_eq!(r.botao_compartilhar, "Compartilhar acesso");
         assert!(r.pode_compartilhar);
     }
