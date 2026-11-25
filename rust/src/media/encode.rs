@@ -12,18 +12,28 @@
 //!   ou o BGRA já lido vira NV12 na CPU ([`VideoEncoder::encode_bgra`]) — o
 //!   melhor quando a "GPU" é o WARP (VM, servidor), onde shader também é CPU.
 
-use std::ffi::c_void;
-use std::time::Instant;
-
-use crate::proto::codec::Codec;
-use windows::core::Interface;
-use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ};
-
-use crate::media::ffi::ffmpeg::*;
-use crate::media::gpu::Device;
 use crate::media::damage::Region;
+use crate::media::Result;
+use crate::proto::codec::Codec;
+
+// O libavcodec (placa e memória) é só do Windows: no Linux codificam o
+// openh264 e o sem perda (docs/linux.md).
+#[cfg(windows)]
+use std::ffi::c_void;
+#[cfg(windows)]
+use std::time::Instant;
+#[cfg(windows)]
+use windows::core::Interface;
+#[cfg(windows)]
+use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ};
+#[cfg(windows)]
+use crate::media::ffi::ffmpeg::*;
+#[cfg(windows)]
+use crate::media::gpu::Device;
+#[cfg(windows)]
 use crate::media::yuv::{bgra_to_nv12, bgra_to_nv12_par, bgra_to_yuv444_par, Nv12Planes, Yuv444Planes};
-use crate::media::{MediaError, Result};
+#[cfg(windows)]
+use crate::media::MediaError;
 
 /// Um pacote pronto pra rede.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +46,8 @@ pub trait VideoEncoder: Send {
     fn name(&self) -> &str;
     fn codec(&self) -> Codec;
     fn size(&self) -> (u32, u32);
-    /// Codifica o quadro NV12. `force_key` = este quadro TEM que ser keyframe.
+    /// Codifica o quadro NV12 da placa. `force_key` = este quadro TEM que ser keyframe.
+    #[cfg(windows)]
     fn encode(&mut self, dev: &Device, nv12: &ID3D11Texture2D, force_key: bool) -> Result<Vec<EncodedPacket>>;
     /// Aceita BGRA da memória ([`VideoEncoder::encode_bgra`])?
     fn accepts_bgra(&self) -> bool {
@@ -110,7 +121,20 @@ pub fn can_force_key(backend: &str) -> bool {
 /// FFmpeg o tiver (é GPL — a build que o Reflex usa não tem).
 pub const FULL_CHROMA_BACKEND: &str = "libx264";
 
+/// Abre o encoder de `cfg.backend` sem placa (Linux): o openh264 ou o sem perda.
+#[cfg(not(windows))]
+pub fn open_encoder(cfg: &EncoderConfig) -> Result<Box<dyn VideoEncoder>> {
+    if cfg.backend == crate::media::openh264enc::BACKEND {
+        Ok(Box::new(crate::media::openh264enc::OpenH264Encoder::open(cfg)?))
+    } else if cfg.backend == crate::media::lossless_codec::BACKEND {
+        Ok(Box::new(crate::media::lossless_codec::LosslessEncoder::open(cfg)?))
+    } else {
+        Err(format!("encoder {} não existe neste sistema", cfg.backend).into())
+    }
+}
+
 /// Abre o encoder de `cfg.backend`.
+#[cfg(windows)]
 pub fn open_encoder(dev: &Device, cfg: &EncoderConfig) -> Result<Box<dyn VideoEncoder>> {
     if cfg.backend == crate::media::openh264enc::BACKEND {
         Ok(Box::new(crate::media::openh264enc::OpenH264Encoder::open(cfg)?))
@@ -208,11 +232,13 @@ pub fn with_headers(codec: Codec, headers: &[u8], packet: Vec<u8>, key: bool) ->
 
 /// Device D3D11 do FFmpeg sobre o NOSSO `ID3D11Device` + pool de quadros NV12
 /// na GPU. Cada offset é conferido contra um valor conhecido antes de escrever.
+#[cfg(windows)]
 struct HwFrames {
     _device: BufRef,
     frames: BufRef,
 }
 
+#[cfg(windows)]
 impl HwFrames {
     fn new(device: &ID3D11Device, w: u32, h: u32) -> Result<Self> {
         let a = api()?;
@@ -264,6 +290,7 @@ impl HwFrames {
 }
 
 /// `AVCodecContext.hw_frames_ctx` por offset, conferido pela âncora `extra_hw_frames`.
+#[cfg(windows)]
 unsafe fn set_hw_frames_ctx(ctx: *mut AVCodecContext, frames: *mut c_void) -> Result<()> {
     let a = api()?;
     const MARK: i32 = 0x2468;
@@ -286,6 +313,7 @@ unsafe fn set_hw_frames_ctx(ctx: *mut AVCodecContext, frames: *mut c_void) -> Re
 }
 
 /// Encoder do libavcodec.
+#[cfg(windows)]
 pub struct AvEncoder {
     cfg: EncoderConfig,
     ctx: CodecCtx,
@@ -303,6 +331,7 @@ pub struct AvEncoder {
 }
 
 // SAFETY: contexto e quadros usados por uma thread só (a de captura).
+#[cfg(windows)]
 unsafe impl Send for AvEncoder {}
 
 /// Separa os NALs de parâmetros (SPS/PPS/VPS) do início de um keyframe Annex-B.
@@ -353,6 +382,7 @@ fn nal_units(data: &[u8]) -> Vec<(usize, usize)> {
     out
 }
 
+#[cfg(windows)]
 impl AvEncoder {
     fn open_ctx(cfg: &EncoderConfig, hw: Option<&HwFrames>) -> Result<CodecCtx> {
         let a = api()?;
@@ -619,6 +649,7 @@ pub(crate) fn conversion_threads() -> usize {
     std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).clamp(1, 4)
 }
 
+#[cfg(windows)]
 impl VideoEncoder for AvEncoder {
     fn name(&self) -> &str {
         &self.cfg.backend

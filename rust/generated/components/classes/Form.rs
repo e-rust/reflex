@@ -247,6 +247,12 @@ impl Form {
     pub fn set_present(self, ui: &mut Ui, value: aylis::prelude::FormPresent) {
         handles::write(ui, self.id, "present", PropValue::enum_value(value))
     }
+    pub fn blend_compositor(self, ui: &Ui) -> aylis::prelude::FormBlendCompositor {
+        handles::read_enum::<aylis::prelude::FormBlendCompositor>(ui, self.id, "blend_compositor")
+    }
+    pub fn set_blend_compositor(self, ui: &mut Ui, value: aylis::prelude::FormBlendCompositor) {
+        handles::write(ui, self.id, "blend_compositor", PropValue::enum_value(value))
+    }
     pub fn span_monitors(self, ui: &Ui) -> bool {
         handles::read(ui, self.id, "span_monitors").and_then(|v| v.to_bool().ok()).unwrap_or_default()
     }
@@ -378,6 +384,24 @@ impl Form {
     }
     pub fn set_on_view_change(self, ui: &mut Ui, value: impl Into<String>) {
         handles::write(ui, self.id, "on_view_change", Into::<String>::into(value))
+    }
+    pub fn on_topmost_lost(self, ui: &Ui) -> String {
+        handles::text(ui, handles::read(ui, self.id, "on_topmost_lost"))
+    }
+    pub fn set_on_topmost_lost(self, ui: &mut Ui, value: impl Into<String>) {
+        handles::write(ui, self.id, "on_topmost_lost", Into::<String>::into(value))
+    }
+    pub fn on_scale_change(self, ui: &Ui) -> String {
+        handles::text(ui, handles::read(ui, self.id, "on_scale_change"))
+    }
+    pub fn set_on_scale_change(self, ui: &mut Ui, value: impl Into<String>) {
+        handles::write(ui, self.id, "on_scale_change", Into::<String>::into(value))
+    }
+    pub fn on_resize_end(self, ui: &Ui) -> String {
+        handles::text(ui, handles::read(ui, self.id, "on_resize_end"))
+    }
+    pub fn set_on_resize_end(self, ui: &mut Ui, value: impl Into<String>) {
+        handles::write(ui, self.id, "on_resize_end", Into::<String>::into(value))
     }
     pub fn client_width(self, ui: &Ui) -> f64 {
         handles::read(ui, self.id, "client_width").and_then(|v| v.to_f64().ok()).unwrap_or_default()
@@ -727,10 +751,10 @@ impl Form {
     pub fn set_font_size(self, ui: &mut Ui, value: f64) {
         handles::write(ui, self.id, "font_size", value)
     }
-    pub fn font_weight(self, ui: &Ui) -> FontWeight {
-        handles::read_enum::<FontWeight>(ui, self.id, "font_weight")
+    pub fn font_weight(self, ui: &Ui) -> Option<aylis::prelude::FontWeight> {
+        handles::read_enum::<Option<aylis::prelude::FontWeight>>(ui, self.id, "font_weight")
     }
-    pub fn set_font_weight(self, ui: &mut Ui, value: FontWeight) {
+    pub fn set_font_weight(self, ui: &mut Ui, value: Option<aylis::prelude::FontWeight>) {
         handles::write(ui, self.id, "font_weight", PropValue::enum_value(value))
     }
     pub fn font_italic(self, ui: &Ui) -> bool {
@@ -900,6 +924,23 @@ impl Form {
     }
     pub fn request_attention(self, ui: &mut Ui, critical: bool) -> Result<(), String> {
         handles::try_call(ui, self.id, "request_attention", &[critical.into()]).map(|_| ())
+    }
+    pub fn bring_to_front(self, ui: &mut Ui) -> Result<(), String> {
+        handles::try_call(ui, self.id, "bring_to_front", &[]).map(|_| ())
+    }
+    pub fn set_activation_token(self, ui: &mut Ui, token: &str) -> Result<(), String> {
+        handles::try_call(ui, self.id, "set_activation_token", &[PropValue::String(token.to_string())]).map(|_| ())
+    }
+    pub fn window_scale(self, ui: &mut Ui) -> Result<f64, String> {
+        let v = handles::try_call(ui, self.id, "window_scale", &[])?;
+        Ok(v.to_f64().unwrap_or_default())
+    }
+    pub fn pointer_over(self, ui: &mut Ui) -> Result<bool, String> {
+        let v = handles::try_call(ui, self.id, "pointer_over", &[])?;
+        Ok(v.to_bool().unwrap_or_default())
+    }
+    pub fn place(self, ui: &mut Ui, monitor: i64, x: i64, y: i64, width: i64, height: i64, activate: bool) -> Result<(), String> {
+        handles::try_call(ui, self.id, "place", &[monitor.into(), x.into(), y.into(), width.into(), height.into(), activate.into()]).map(|_| ())
     }
     pub fn gpu_adapter(self, ui: &mut Ui) -> Result<String, String> {
         let v = handles::try_call(ui, self.id, "gpu_adapter", &[])?;

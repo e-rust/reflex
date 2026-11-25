@@ -10,35 +10,20 @@
 //! O supervisor (serviço) mantém um `--agent` e um `--user` na sessão de
 //! console ativa e os relança quando a sessão troca (§4.1).
 
-use crate::{admin, agent, cli, logger, probe, service, user};
+use crate::{admin, cli, logger, probe};
 
 /// O `main` do reflex.exe: escolhe o modo e sai com o código dele.
 pub fn main() {
     // Saída do console em UTF-8 (acentos certos no cmd/PowerShell).
+    #[cfg(windows)]
     unsafe {
         let _ = windows::Win32::System::Console::SetConsoleOutputCP(65001);
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mode = args.first().map(String::as_str);
     let rc = match mode {
-        Some("--service") => {
-            logger::init("service", true);
-            service::run_service()
-        }
-        Some("--agent") => {
-            logger::init("agent", true);
-            agent::run()
-        }
-        Some("--user") => {
-            logger::init("user", false);
-            user::run()
-        }
-        Some("--install") => report(cli::install()),
-        Some("--uninstall") => report(cli::uninstall()),
+        Some(m @ ("--service" | "--agent" | "--user" | "--install" | "--uninstall" | "--add-user" | "--status" | "--baixar-openh264")) => host_mode(m, &args[1..]),
         Some("--my-id") => report(cli::my_id()),
-        Some("--add-user") => report(cli::add_user(&args[1..])),
-        Some("--status") => report(cli::status()),
-        Some("--baixar-openh264") => report(cli::download_openh264(&args[1..])),
         Some("--probe") => report(probe::run(&args[1..])),
         Some("--connect") => {
             logger::init("ui", false);
@@ -71,10 +56,60 @@ pub fn main() {
     std::process::exit(rc);
 }
 
+/// Os modos do lado controlado: serviço, agente, processo do usuário e a
+/// instalação.
+#[cfg(windows)]
+fn host_mode(mode: &str, args: &[String]) -> i32 {
+    use crate::{agent, install, service, user};
+    match mode {
+        "--service" => {
+            logger::init("service", true);
+            service::run_service()
+        }
+        "--agent" => {
+            logger::init("agent", true);
+            agent::run()
+        }
+        "--user" => {
+            logger::init("user", false);
+            user::run()
+        }
+        "--install" => report(install::install()),
+        "--uninstall" => report(install::uninstall()),
+        "--add-user" => report(cli::add_user(args)),
+        "--status" => report(cli::status()),
+        _ => report(install::download_openh264(args)),
+    }
+}
+
+/// Linux: o agente roda como o usuário da sessão gráfica, lançado pelo
+/// systemd do usuário — não há serviço do sistema nem processo do usuário à
+/// parte (docs/linux.md).
+#[cfg(target_os = "linux")]
+fn host_mode(mode: &str, args: &[String]) -> i32 {
+    use crate::{agent, install_linux};
+    match mode {
+        "--agent" => {
+            logger::init("agent", true);
+            agent::run()
+        }
+        "--install" => report(install_linux::install()),
+        "--uninstall" => report(install_linux::uninstall()),
+        "--add-user" => report(cli::add_user(args)),
+        "--status" => report(cli::status()),
+        other => report(Err(format!("{other}: não existe no Linux (o agente roda pelo systemd do usuário: reflex --install)"))),
+    }
+}
+
 /// Interface sem janela de console. No Windows 11 24H2+ o manifesto
 /// (`consoleAllocationPolicy`) já evita o console; em versões anteriores, se o
 /// console foi criado só pra este processo (aberto pelo Explorer), solta.
-/// Aberto num terminal, o console é do terminal e fica.
+/// Aberto num terminal, o console é do terminal e fica. No Linux não há o que
+/// soltar.
+#[cfg(not(windows))]
+fn release_own_console() {}
+
+#[cfg(windows)]
 fn release_own_console() {
     use windows::Win32::System::Console::{FreeConsole, GetConsoleProcessList};
     let mut pids = [0u32; 2];

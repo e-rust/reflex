@@ -1,28 +1,16 @@
-//! Relógio monotônico em nanossegundos (QPC), o mesmo no processo inteiro.
+//! Relógio monotônico em nanossegundos, o mesmo no processo inteiro (o
+//! `Instant` do Rust: QPC no Windows, `CLOCK_MONOTONIC` no Linux). Entre
+//! máquinas, o viewer acha a diferença dos relógios pelo ping.
 
 use std::sync::OnceLock;
+use std::time::Instant;
 
-use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
-
-fn frequency() -> i64 {
-    static F: OnceLock<i64> = OnceLock::new();
-    *F.get_or_init(|| {
-        let mut f = 0i64;
-        unsafe {
-            let _ = QueryPerformanceFrequency(&mut f);
-        }
-        f.max(1)
-    })
-}
-
-/// Agora, em ns desde o boot.
+/// Agora, em ns desde a 1ª leitura do processo.
 pub fn now_ns() -> u64 {
-    let mut c = 0i64;
-    unsafe {
-        let _ = QueryPerformanceCounter(&mut c);
-    }
-    let f = frequency() as i128;
-    ((c as i128) * 1_000_000_000 / f) as u64
+    static START: OnceLock<Instant> = OnceLock::new();
+    // +1 s: o zero fica reservado pra "nunca" (quem guarda um instante usa 0
+    // como "ainda não aconteceu").
+    START.get_or_init(Instant::now).elapsed().as_nanos() as u64 + 1_000_000_000
 }
 
 #[cfg(test)]

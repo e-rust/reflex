@@ -1,28 +1,13 @@
-//! Identidade do viewer (par de chaves + certificado), guardada com DPAPI em
-//! `%LOCALAPPDATA%\Reflex\identity.bin`.
+//! Identidade do viewer (par de chaves + certificado), guardada como segredo
+//! do usuário em `identity.bin` na pasta dele.
 
-use crate::auth::identity::Identity;
+use crate::identity_store::load_or_create_identity;
 use crate::net::LocalCert;
-use crate::platform::dpapi::{self, Scope};
 use crate::platform::paths;
+use crate::platform::secret::Scope;
 
 /// Carrega a identidade do viewer, criando na 1ª vez.
 pub fn viewer_cert() -> Result<LocalCert, String> {
-    let path = paths::user_dir().join("identity.bin");
-    if let Ok(sealed) = std::fs::read(&path)
-        && let Ok(bytes) = dpapi::unprotect(&sealed)
-        && let Ok(id) = serde_json::from_slice::<Identity>(&bytes)
-    {
-        return Ok(LocalCert { cert_der: id.cert_der, key_der: id.key_der });
-    }
-    let id = Identity::generate("Reflex Viewer").map_err(|e| e.to_string())?;
-    if let Ok(bytes) = serde_json::to_vec(&id)
-        && let Ok(sealed) = dpapi::protect(&bytes, Scope::User)
-    {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(&path, sealed);
-    }
+    let id = load_or_create_identity(&paths::user_dir().join("identity.bin"), "Reflex Viewer", Scope::User)?;
     Ok(LocalCert { cert_der: id.cert_der, key_der: id.key_der })
 }

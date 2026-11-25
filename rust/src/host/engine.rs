@@ -1,19 +1,19 @@
-//! Motor de captura numa thread própria (§4.1, §10.4). Captura DXGI → NV12 na
-//! GPU → encode, obedecendo ao [`Pacer`] (nunca enfileira quadro). Segue a
-//! área de trabalho de entrada (Winlogon na tela de login) e recria a captura
-//! quando ela troca ou quando o acesso é perdido.
+//! Motor de captura numa thread própria (§4.1, §10.4). Captura da tela
+//! ([`Screen`]: DXGI no Windows, PipeWire no Linux) → encode, obedecendo ao
+//! [`Pacer`] (nunca enfileira quadro). No Windows segue a área de trabalho de
+//! entrada (Winlogon na tela de login); recria a captura quando ela troca ou
+//! quando o acesso é perdido.
 //!
 //! O resto do host fala com o motor por comandos ([`EngineCmd`]) e recebe
-//! eventos ([`EngineEvent`]); não sabe de D3D11 nem FFmpeg.
+//! eventos ([`EngineEvent`]); não sabe de captura nem de codec.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::sync::Arc;
 
-use crate::media::capture::ScreenCapture;
+use crate::host::screen::Screen;
 use crate::media::cursor::{to_image, RawCursorShape};
 use crate::media::encode::{EncoderConfig, VideoEncoder, FULL_CHROMA_BACKEND};
-use crate::media::gpu::{fit_even, BgraReadback, Device, Nv12Converter};
 use crate::host::hybrid::{Delivery, HybridPolicy, Mode};
 use crate::media::lossless::{LosslessMeter, LosslessStats};
 use crate::media::pacing::{Decision, Pacer};
@@ -326,7 +326,7 @@ pub fn run(initial: EngineConfig, cmds: Receiver<EngineCmd>, events: Sender<Engi
             // Sem captura aberta, a próxima já começa por keyframe.
             Ok(EngineCmd::RequestKeyframe) => state.iter_mut().for_each(|s| s.pacer.request_key()),
             Ok(EngineCmd::MeasureLossless(on)) => {
-                if on && state.as_ref().is_some_and(|s| s.readback.is_none()) {
+                if on && state.as_ref().is_some_and(|s| !s.screen.is_cpu()) {
                     log::warn!("medida sem perda: só no caminho de CPU (placa de software); aqui não mede");
                 }
                 shared.lossless = on.then(LosslessMeter::default);
@@ -402,7 +402,7 @@ fn apply_display(cfg: &EngineConfig, display: &mut DisplayOverride) {
         display.restore();
         return;
     };
-    let monitors = crate::media::capture::monitors();
+    let monitors = crate::host::screen::monitors();
     let Some(m) = monitors.iter().find(|m| m.id == cfg.monitor).or(monitors.first()) else { return };
     match display.apply(&m.name, (want.width, want.height), want.scale_pct) {
         Ok(mode) if mode != (m.width, m.height) => log::info!("{}: {}x{} a {}% (pedido {}x{})", m.name, mode.0, mode.1, want.scale_pct, want.width, want.height),
@@ -413,12 +413,9 @@ fn apply_display(cfg: &EngineConfig, display: &mut DisplayOverride) {
 
 struct State {
     cfg: EngineConfig,
-    dev: Device,
-    capture: ScreenCapture,
-    conv: Nv12Converter,
-    /// Caminho de CPU (placa de software + encoder de memória, sem escala):
-    /// lê o BGRA e o encoder converte. Sem ele, NV12 no shader.
-    readback: Option<BgraReadback>,
+    /// A captura; no caminho de CPU (sem perda, 4:4:4, sem placa) o BGRA é
+    /// lido e o encoder converte; no da placa, NV12 no shader.
+    screen: Screen,
     encoder: Box<dyn VideoEncoder>,
     pacer: Pacer,
     width: u32,
@@ -435,45 +432,35 @@ struct State {
 impl State {
     /// Nova captura + conversor + encoder. O `Pacer` novo começa por keyframe.
     fn start(cfg: &EngineConfig) -> Result<Self, String> {
-        let (dev, mut capture) = ScreenCapture::open(cfg.monitor).map_err(|e| e.to_string())?;
+        let mut screen = Screen::open(cfg.monitor)?;
         // Sem perda: a tela no tamanho real (não escala; já é 4:4:4) e sempre
         // pelo caminho de CPU (o BGRA lido só nas regiões alteradas).
         let lossless = cfg.codec == Codec::Lossless;
-        let (width, height) = if lossless { (capture.image.width, capture.image.height) } else { fit_even(capture.image.width, capture.image.height, cfg.max_width, cfg.max_height) };
-        let conv = Nv12Converter::new(&dev, width, height).map_err(|e| e.to_string())?;
-        let unscaled = (width, height) == (capture.image.width, capture.image.height);
+        let (width, height) = if lossless { screen.image_size() } else { screen.fit(cfg.max_width, cfg.max_height) };
+        let unscaled = (width, height) == screen.image_size();
         // 4:4:4 em vídeo só sai pelo caminho BGRA, que não escala, e só com o x264.
         let full = caps::has_full_chroma(caps::encoders());
         let chroma444 = !lossless && cfg.chroma == Chroma::Yuv444 && unscaled && full;
         if !lossless && cfg.chroma == Chroma::Yuv444 && !chroma444 {
             log::warn!("cor 4:4:4 pedida, mas {}: fica 4:2:0", if full { format!("com escala {width}x{height}") } else { "não há encoder que faça (o x264 não está na build do FFmpeg)".into() });
         }
-        let encoder = open_encoder(&dev, cfg, width, height, chroma444)?;
-        let readback = if (dev.is_software() || chroma444 || lossless) && encoder.accepts_bgra() && unscaled {
-            log::info!("leitura na CPU ({})", if lossless { "sem perda" } else if chroma444 { "cor 4:4:4" } else { "placa de software" });
-            Some(BgraReadback::new(&dev, &capture.image).map_err(|e| e.to_string())?)
-        } else {
-            None
-        };
+        let encoder = open_encoder(&screen, cfg, width, height, chroma444)?;
+        let cpu = screen.prepare(width, height, chroma444 || lossless, encoder.accepts_bgra())?;
         // Sem perda não refina: a tela parada já chegou exata.
         let refine = if lossless { Refine::Off } else { cfg.refine };
         let pacer = Pacer::new(cfg.max_fps as u32).with_refine(refine.plan());
-        capture.partial = readback.is_some();
-        let hybrid = (lossless && cfg.fallback.is_some() && readback.is_some()).then(|| HybridPolicy::new(clock::now_ns()));
+        let hybrid = (lossless && cfg.fallback.is_some() && cpu).then(|| HybridPolicy::new(clock::now_ns()));
         // O híbrido começa no vídeo: o keyframe pequeno mede o link (ver `hybrid`).
         let (encoder, pacer) = match (hybrid.as_ref(), cfg.fallback) {
             (Some(_), Some(video)) => {
                 let video_cfg = EngineConfig { codec: video, hw_encode: false, ..cfg.clone() };
-                (open_encoder(&dev, &video_cfg, width, height, false)?, Pacer::new(cfg.max_fps as u32).with_refine(cfg.refine.plan()))
+                (open_encoder(&screen, &video_cfg, width, height, false)?, Pacer::new(cfg.max_fps as u32).with_refine(cfg.refine.plan()))
             }
             _ => (encoder, pacer),
         };
         Ok(Self {
             cfg: cfg.clone(),
-            dev,
-            capture,
-            conv,
-            readback,
+            screen,
             encoder,
             pacer,
             width,
@@ -493,7 +480,7 @@ impl State {
             Mode::Video => self.cfg.fallback.unwrap_or(Codec::H264),
         };
         let cfg = EngineConfig { codec, hw_encode: false, ..self.cfg.clone() };
-        self.encoder = open_encoder(&self.dev, &cfg, self.width, self.height, false).map_err(StepError::Fatal)?;
+        self.encoder = open_encoder(&self.screen, &cfg, self.width, self.height, false).map_err(StepError::Fatal)?;
         let refine = if codec == Codec::Lossless { Refine::Off } else { self.cfg.refine };
         self.pacer = Pacer::new(self.cfg.max_fps as u32).with_refine(refine.plan());
         self.damage = crate::media::damage::Damage::Full;
@@ -511,7 +498,7 @@ impl State {
     fn tick(&mut self, events: &Sender<EngineEvent>, shape_id: &mut u32, shared: &mut Shared) -> Result<(), StepError> {
         let wait = self.pacer.wait_hint_ms(clock::now_ns());
         let t_acquire = clock::now_ns();
-        let info = match self.capture.acquire(&self.dev, wait) {
+        let info = match self.screen.acquire(wait) {
             Ok(Some(info)) => info,
             Ok(None) => Default::default(),
             Err(crate::media::MediaError::AccessLost) => return Err(StepError::AccessLost),
@@ -519,7 +506,8 @@ impl State {
         };
         if info.new_image {
             if shared.lossless.is_some() {
-                let (w, h) = (self.capture.image.width as u64, self.capture.image.height as u64);
+                let (w, h) = self.screen.image_size();
+                let (w, h) = (w as u64, h as u64);
                 shared.stats.lossless.changed_px += info.dirty.as_ref().map_or(w * h, |d| d.iter().map(|r| r.area()).sum());
                 shared.stats.lossless.moved_px += info.moved_px;
             }
@@ -535,7 +523,7 @@ impl State {
             let _ = events.send(EngineEvent::CursorShape(cs));
         }
         let screen = if info.cursor_pos.is_none() { crate::platform::input::cursor_screen_pos() } else { None };
-        let origin = (self.capture.monitor.x, self.capture.monitor.y);
+        let origin = self.screen.origin();
         if let Some((x, y, visible)) = shared.cursor.next(info.cursor_pos, screen, origin) {
             let _ = events.send(EngineEvent::CursorPos { x, y, visible, shape_id: *shape_id });
         }
@@ -561,16 +549,16 @@ impl State {
             let capture_ns = clock::now_ns();
             let mut measured_us = 0;
             let mut estimate = None;
-            let packets = match &self.readback {
-                Some(rb) => {
-                    let encoder = &mut self.encoder;
-                    let (w, h) = (self.capture.image.width, self.capture.image.height);
-                    let regions = self.damage.take().regions(w, h);
-                    let regions = regions.as_deref();
-                    let (meter, lossless) = (shared.lossless.as_mut(), &mut shared.stats.lossless);
-                    // No vídeo do híbrido: quanto o sem perda ocuparia agora.
-                    let estimator = (self.hybrid.as_ref().is_some_and(|h| h.mode() == Mode::Video) && !refine).then_some(&mut self.estimator);
-                    rb.read(&self.dev, &self.capture.image.tex, regions, |bgra, stride| {
+            let packets = if self.screen.is_cpu() {
+                let encoder = &mut self.encoder;
+                let (w, h) = self.screen.image_size();
+                let regions = self.damage.take().regions(w, h);
+                let regions = regions.as_deref();
+                let (meter, lossless) = (shared.lossless.as_mut(), &mut shared.stats.lossless);
+                // No vídeo do híbrido: quanto o sem perda ocuparia agora.
+                let estimator = (self.hybrid.as_ref().is_some_and(|h| h.mode() == Mode::Video) && !refine).then_some(&mut self.estimator);
+                self.screen
+                    .read_bgra(regions, |bgra, stride| {
                         let t = clock::now_ns();
                         // Diagnóstico: o que estes mesmos pixels ocupariam sem perda.
                         if let Some(m) = meter.filter(|_| !refine) {
@@ -581,11 +569,8 @@ impl State {
                         encoder.encode_bgra(bgra, stride, regions, force_key)
                     })
                     .map_err(|e| StepError::Fatal(e.to_string()))?
-                }
-                None => {
-                    self.conv.convert(&self.dev, &self.capture.image.srv);
-                    self.encoder.encode(&self.dev, &self.conv.nv12, force_key)
-                }
+            } else {
+                self.screen.encode_gpu(self.encoder.as_mut(), force_key)
             }
             .map_err(|e| StepError::Fatal(e.to_string()))?;
             if let (Some(h), Some(bytes)) = (self.hybrid.as_mut(), estimate) {
@@ -636,7 +621,7 @@ fn cursor_shape(raw: &RawCursorShape, shape_id: &mut u32) -> Option<crate::proto
     Some(crate::proto::msg::CursorShape { id: *shape_id, width: img.width, height: img.height, hot_x: img.hot_x, hot_y: img.hot_y, bgra: img.bgra })
 }
 
-fn open_encoder(dev: &Device, cfg: &EngineConfig, width: u32, height: u32, chroma444: bool) -> Result<Box<dyn VideoEncoder>, String> {
+fn open_encoder(screen: &Screen, cfg: &EngineConfig, width: u32, height: u32, chroma444: bool) -> Result<Box<dyn VideoEncoder>, String> {
     // 4:4:4: só o x264 (os de GPU e o openh264 não fazem).
     let hw = cfg.hw_encode && !chroma444;
     let backend = if chroma444 { Some(FULL_CHROMA_BACKEND) } else { caps::backend_for(caps::encoders(), cfg.codec, hw) };
@@ -651,7 +636,7 @@ fn open_encoder(dev: &Device, cfg: &EngineConfig, width: u32, height: u32, chrom
         vbv_frames: cfg.refine.plan().vbv_frames,
         chroma444,
     };
-    crate::media::encode::open_encoder(dev, &ecfg).map_err(|e| e.to_string())
+    screen.open_encoder(&ecfg).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

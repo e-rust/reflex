@@ -19,9 +19,19 @@ struct FileLogger {
 /// A cada quantas linhas confere o tamanho do arquivo.
 const CHECK_EVERY: u32 = 500;
 
+/// Bibliotecas que falam demais no `info` (o zbus conta cada passo do
+/// handshake do D-Bus): delas, só avisos e erros.
+const QUIET: [&str; 1] = ["zbus"];
+
+/// O nível que vai pro arquivo, por origem. Pura.
+fn wanted(target: &str, level: log::Level) -> bool {
+    let quiet = QUIET.iter().any(|q| target == *q || target.starts_with(&format!("{q}::")));
+    level <= if quiet { log::Level::Warn } else { log::Level::Info }
+}
+
 impl log::Log for FileLogger {
     fn enabled(&self, meta: &log::Metadata) -> bool {
-        meta.level() <= log::Level::Info
+        wanted(meta.target(), meta.level())
     }
 
     fn log(&self, record: &log::Record) {
@@ -89,6 +99,17 @@ pub fn init(mode: &str, machine: bool) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn noisy_libraries_only_warn() {
+        use log::Level;
+        assert!(!super::wanted("zbus::connection::handshake", Level::Info));
+        assert!(super::wanted("zbus", Level::Warn));
+        assert!(super::wanted("reflex::agent", Level::Info));
+        assert!(!super::wanted("reflex::agent", Level::Debug));
+        // Outro nome que só começa igual não é o zbus.
+        assert!(super::wanted("zbusdg", Level::Info));
+    }
+
     #[test]
     fn timestamp_has_fixed_shape() {
         let t = super::timestamp();

@@ -1,6 +1,7 @@
 //! GPU → encode → decode de verdade, em cada codec que a máquina tiver.
-//! Precisa de GPU e das DLLs do FFmpeg (`third_party\ffmpeg`):
-//! `cargo test -p reflex-media --test pipeline -- --ignored --nocapture`
+//! Precisa de GPU e das DLLs do FFmpeg (`runtime\`), no Windows:
+//! `cargo test --test pipeline -- --ignored --nocapture`
+#![cfg(windows)]
 
 use std::time::Instant;
 

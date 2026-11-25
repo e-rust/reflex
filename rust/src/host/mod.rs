@@ -11,8 +11,16 @@ pub mod engine;
 pub mod handshake;
 pub mod hub;
 pub mod hybrid;
+pub mod screen;
 pub mod server;
 pub mod session;
+
+// A ponte com o processo do usuário (clipboard, arquivos) é do Windows: no
+// Linux o agente já roda como o usuário (e a ponte não tem valor).
+#[cfg(windows)]
+pub mod user_bridge;
+#[cfg(not(windows))]
+#[path = "user_bridge_none.rs"]
 pub mod user_bridge;
 
 #[derive(Debug, thiserror::Error)]

@@ -53,6 +53,23 @@ pub fn norm(px: i32, py: i32, image: Rect) -> (u16, u16) {
     (axis(px, image.x, image.w), axis(py, image.y, image.h))
 }
 
+/// O `WHEEL_DELTA` do Windows: um dente da roda no protocolo.
+const WHEEL_DELTA: f32 = 120.0;
+
+/// A roda do Aylis (`delta` em pontos, positivo = pra cima / pra esquerda,
+/// como no winit; um dente = `line`) → dentes do protocolo (120 = um,
+/// positivo pra cima / pra direita, como no Windows). O que sobra de um dente
+/// fica em `rest` pro próximo (touchpad). Pura.
+pub fn wheel_notches(rest: &mut (f32, f32), delta: (f32, f32), line: f32) -> (i16, i16) {
+    let line = line.max(1.0);
+    rest.0 -= delta.0 / line * WHEEL_DELTA;
+    rest.1 += delta.1 / line * WHEEL_DELTA;
+    let out = (rest.0.trunc(), rest.1.trunc());
+    rest.0 -= out.0;
+    rest.1 -= out.1;
+    (out.0.clamp(i16::MIN as f32, i16::MAX as f32) as i16, out.1.clamp(i16::MIN as f32, i16::MAX as f32) as i16)
+}
+
 /// Onde o cursor vai na janela: a posição e o tamanho remotos na escala da
 /// imagem desenhada.
 pub fn cursor_rect(image: Rect, frame: (u32, u32), pos: (i32, i32), size: (u32, u32)) -> Rect {
@@ -149,6 +166,21 @@ pub fn cursor_pick(c: &RemoteCursor) -> CursorPick {
         Some(_) if c.known && !c.visible => CursorPick::Hidden,
         Some(s) if shape_ok(s) => CursorPick::Remote(s.id),
         _ => CursorPick::Local,
+    }
+}
+
+#[cfg(test)]
+mod wheel_tests {
+    use super::*;
+
+    #[test]
+    fn a_notch_down_is_minus_120_and_touchpad_fractions_add_up() {
+        let mut rest = (0.0, 0.0);
+        // Pra baixo no Aylis é negativo; no protocolo também.
+        assert_eq!(wheel_notches(&mut rest, (0.0, -100.0), 100.0), (0, -120));
+        // Pra direita no Aylis é negativo; no protocolo, positivo.
+        assert_eq!(wheel_notches(&mut rest, (-25.0, 0.5), 100.0), (30, 0));
+        assert_eq!(wheel_notches(&mut rest, (0.0, 0.5), 100.0), (0, 1));
     }
 }
 

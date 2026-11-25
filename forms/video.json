@@ -5,11 +5,19 @@
     "name": "frmVideo",
     "caption": "Reflex",
     "position": "screen_center",
+    "key_preview": true,
     "on_show": "frmVideo_show",
+    "on_window_created": "frmVideo_window_created",
     "on_close": "frmVideo_close",
+    "on_activate": "frmVideo_activate",
+    "on_deactivate": "frmVideo_deactivate",
+    "on_scale_change": "frmVideo_scale_change",
+    "on_resize_end": "frmVideo_resize_end",
     "width": 1280,
     "height": 760,
     "fill": "#000000",
+    "on_key_down": "frmVideo_key_down",
+    "on_key_up": "frmVideo_key_up",
     "children": [
       {
         "class": "Layout",
@@ -19,7 +27,14 @@
           {
             "class": "FrameView",
             "name": "fvTela",
-            "align": "client"
+            "align": "client",
+            "captures_wheel": true,
+            "on_pointer_down": "fvTela_pointer_down",
+            "on_pointer_up": "fvTela_pointer_up",
+            "on_pointer_move": "fvTela_pointer_move",
+            "on_pointer_enter": "fvTela_pointer_enter",
+            "on_pointer_leave": "fvTela_pointer_leave",
+            "on_wheel": "fvTela_wheel"
           },
           {
             "class": "Image",
@@ -38,6 +53,11 @@
         "interval": 50,
         "enabled": false,
         "on_timer": "tmrVideo_timer"
+      },
+      {
+        "class": "KeyboardCapture",
+        "name": "kcTeclado",
+        "alt_f4": true
       }
     ]
   }

@@ -1,6 +1,8 @@
 //! Host + viewer de verdade, sobre QUIC na loopback, com captura e decode.
-//! Precisa de GPU, monitor e FFmpeg (`exe\`):
-//! `cargo test -p reflex-viewer --test end_to_end -- --ignored --nocapture`
+//! Precisa de GPU, monitor e FFmpeg (`runtime\`), no Windows (o host do
+//! Linux é a fase 3 de docs/linux.md):
+//! `cargo test --test end_to_end -- --ignored --nocapture`
+#![cfg(windows)]
 
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;

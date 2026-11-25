@@ -1,15 +1,20 @@
-//! Acesso ao estado do host (usuários, config, convite) em
-//! `%ProgramData%\Reflex`, compartilhado pelo agente e pelo serviço.
+//! Acesso ao estado do host (usuários, config, convite) na pasta da máquina
+//! ([`paths::machine_dir`]), compartilhado pelo agente e pelo serviço.
 
 use crate::auth::store::{FileStorage, SignedFile};
-use crate::platform::dpapi::Scope;
+use crate::platform::secret::Scope;
 use crate::platform::paths;
 use crate::proto::msg::MachineStatus;
 
 use crate::identity_store::{load_or_create_identity, load_or_create_secret};
 
+/// O nome desta máquina.
 pub fn hostname() -> String {
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Reflex".into())
+    #[cfg(windows)]
+    let name = std::env::var("COMPUTERNAME").ok();
+    #[cfg(not(windows))]
+    let name = std::fs::read_to_string("/proc/sys/kernel/hostname").ok().map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    name.unwrap_or_else(|| "Reflex".into())
 }
 
 /// Store assinado do host.

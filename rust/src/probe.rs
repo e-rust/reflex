@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use crate::auth::identity::AccessId;
 use crate::media::decode::BgraFrame;
 use crate::net::{LocalCert, ServerCheck, TransportMode};
-use crate::platform::dpapi::Scope;
+use crate::platform::secret::Scope;
 use crate::platform::paths;
 use crate::proto::codec::CodecChoice;
 use crate::proto::msg::SessionConfig;

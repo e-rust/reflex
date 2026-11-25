@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::net::{LocalCert, ServerCheck, TransportMode};
-use crate::platform::dpapi::Scope;
+use crate::platform::secret::Scope;
 use crate::platform::paths;
 use crate::proto::msg::{AdminRequest, AdminResponse, UserInfo};
 use crate::proto::perms::Perms;

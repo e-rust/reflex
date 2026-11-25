@@ -46,7 +46,17 @@ png = "0.18"
 # A medida do híbrido imagem + vídeo (media::lossless): compactação sem perda.
 lz4_flex = "0.11"
 zstd = "0.13"
-# Windows: serviço e a API.
+
+# Linux: o lado controlado pelo GNOME (docs/linux.md) — o Mutter pelo D-Bus da
+# sessão e a tela pelo PipeWire. (`all(unix, …)`, e não `target_os = "linux"`:
+# esse bloco é do renderizador, que a IDE reescreve.)
+[target.'cfg(all(unix, target_os = "linux"))'.dependencies]
+zbus = "5"
+pipewire = "0.10"
+
+# Windows: serviço e a API. (`target_os = "windows"`, e não `windows`: o bloco
+# `cfg(windows)` é do renderizador, que a IDE reescreve.)
+[target.'cfg(target_os = "windows")'.dependencies]
 windows-service = "0.8"
 windows-core = "0.61"
 windows = { version = "0.61", features = [

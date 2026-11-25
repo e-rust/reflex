@@ -1,6 +1,8 @@
 //! Segredos em disco protegidos pelo Windows (DPAPI): a chave do viewer (por
 //! usuário) e o segredo da máquina que assina os dados do host.
 
+use std::path::Path;
+
 use windows::Win32::Foundation::{HLOCAL, LocalFree};
 use windows::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_LOCAL_MACHINE, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
 
@@ -43,6 +45,22 @@ pub fn unprotect(data: &[u8]) -> Result<Vec<u8>, String> {
         CryptUnprotectData(&blob(data), None, None, None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut out).map_err(|e| e.to_string())?;
         Ok(take(out))
     }
+}
+
+/// O segredo gravado em `path` (nada se não existe ou não abre).
+pub fn read(path: &Path) -> Option<Vec<u8>> {
+    unprotect(&std::fs::read(path).ok()?).ok()
+}
+
+/// Grava `data` em `path`, selado pelo DPAPI (troca atômica pelo `.tmp`).
+pub fn write(path: &Path, data: &[u8], scope: Scope) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let sealed = protect(data, scope).map_err(std::io::Error::other)?;
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, &sealed)?;
+    std::fs::rename(&tmp, path)
 }
 
 #[cfg(test)]

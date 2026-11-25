@@ -17,6 +17,7 @@ use std::time::Instant;
 use crate::media::damage::Region;
 use crate::media::decode::{BgraFrame, VideoDecoder};
 use crate::media::encode::{EncodeTiming, EncodedPacket, EncoderConfig, VideoEncoder};
+#[cfg(windows)]
 use crate::media::gpu::Device;
 use crate::media::lossless::{clamp, join_region, xor_region};
 use crate::media::{MediaError, Result};
@@ -165,6 +166,7 @@ impl VideoEncoder for LosslessEncoder {
     }
 
     /// Só pelo BGRA (caminho de CPU): o NV12 da placa já perdeu a cor completa.
+    #[cfg(windows)]
     fn encode(&mut self, _dev: &Device, _nv12: &windows::Win32::Graphics::Direct3D11::ID3D11Texture2D, _force_key: bool) -> Result<Vec<EncodedPacket>> {
         Err(MediaError::Msg("o sem perda só codifica pelo BGRA (caminho de CPU)".into()))
     }

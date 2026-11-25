@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use crate::media::decode::{AvDecoder, BgraFrame, VideoDecoder};
+use crate::media::decode::{BgraFrame, VideoDecoder};
 use crate::net::{connect, Connection, LocalCert, ServerCheck, TransportMode};
 use crate::proto::codec::{Codec, CodecCap};
 use crate::proto::frame::{read_known, write_msg};
@@ -281,10 +281,7 @@ async fn decode_loop<R: tokio::io::AsyncRead + Unpin>(s: &mut R, events: mpsc::U
         }
         if current != Some(frame.codec) {
             // Decoder novo ao ver codec diferente (troca em sessão). Vídeo: tenta hardware.
-            decoder = match frame.codec {
-                Codec::Lossless => Some(Box::new(crate::media::lossless_codec::LosslessDecoder::default()) as Box<dyn VideoDecoder>),
-                codec => AvDecoder::open(codec, true).ok().map(|d| Box::new(d) as Box<dyn VideoDecoder>),
-            };
+            decoder = crate::media::decode::open(frame.codec).map_err(|e| log::warn!("decoder: {e}")).ok();
             current = Some(frame.codec);
             log::info!("vídeo em {} ({}x{})", frame.codec.label(), frame.width, frame.height);
             let _ = events.send(ViewerEvent::VideoCodec { codec: frame.codec, width: frame.width, height: frame.height });

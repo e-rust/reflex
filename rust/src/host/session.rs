@@ -300,7 +300,7 @@ async fn forward_input(conn: Arc<dyn Connection>, monitors: Vec<Monitor>, hub: A
         let now = virtual_screen();
         if now != virt {
             virt = now;
-            let fresh = crate::media::capture::monitors();
+            let fresh = crate::host::screen::monitors();
             if !fresh.is_empty() {
                 monitors = fresh;
             }

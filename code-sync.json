@@ -5,9 +5,22 @@
     "frmPrincipal.btnConectar_click": 2,
     "frmPrincipal.btnCopiarId_click": 1,
     "frmPrincipal.frmPrincipal_show": 2,
-    "frmVideo.frmVideo_close": 1,
+    "frmVideo.frmVideo_activate": 1,
+    "frmVideo.frmVideo_close": 2,
+    "frmVideo.frmVideo_deactivate": 1,
+    "frmVideo.frmVideo_key_down": 3,
+    "frmVideo.frmVideo_key_up": 1,
+    "frmVideo.frmVideo_resize_end": 1,
+    "frmVideo.frmVideo_scale_change": 1,
     "frmVideo.frmVideo_show": 1,
-    "frmVideo.tmrVideo_timer": 1
+    "frmVideo.frmVideo_window_created": 1,
+    "frmVideo.fvTela_pointer_down": 1,
+    "frmVideo.fvTela_pointer_enter": 1,
+    "frmVideo.fvTela_pointer_leave": 1,
+    "frmVideo.fvTela_pointer_move": 1,
+    "frmVideo.fvTela_pointer_up": 1,
+    "frmVideo.fvTela_wheel": 1,
+    "frmVideo.tmrVideo_timer": 3
   },
   "languages": {
     "rust": {
@@ -17,8 +30,21 @@
         "frmPrincipal/btnConectar.on_click": "btnConectar_click",
         "frmPrincipal/btnCopiarId.on_click": "btnCopiarId_click",
         "frmPrincipal/frmPrincipal.on_show": "frmPrincipal_show",
+        "frmVideo/frmVideo.on_activate": "frmVideo_activate",
         "frmVideo/frmVideo.on_close": "frmVideo_close",
+        "frmVideo/frmVideo.on_deactivate": "frmVideo_deactivate",
+        "frmVideo/frmVideo.on_key_down": "frmVideo_key_down",
+        "frmVideo/frmVideo.on_key_up": "frmVideo_key_up",
+        "frmVideo/frmVideo.on_resize_end": "frmVideo_resize_end",
+        "frmVideo/frmVideo.on_scale_change": "frmVideo_scale_change",
         "frmVideo/frmVideo.on_show": "frmVideo_show",
+        "frmVideo/frmVideo.on_window_created": "frmVideo_window_created",
+        "frmVideo/fvTela.on_pointer_down": "fvTela_pointer_down",
+        "frmVideo/fvTela.on_pointer_enter": "fvTela_pointer_enter",
+        "frmVideo/fvTela.on_pointer_leave": "fvTela_pointer_leave",
+        "frmVideo/fvTela.on_pointer_move": "fvTela_pointer_move",
+        "frmVideo/fvTela.on_pointer_up": "fvTela_pointer_up",
+        "frmVideo/fvTela.on_wheel": "fvTela_wheel",
         "frmVideo/tmrVideo.on_timer": "tmrVideo_timer"
       },
       "handlers": {
@@ -42,17 +68,69 @@
           "hash": "v2:a8ddfa649ce1cffa",
           "seen": 2
         },
+        "frmVideo.frmVideo_activate": {
+          "hash": "v2:217e004de1725d8f",
+          "seen": 1
+        },
         "frmVideo.frmVideo_close": {
-          "hash": "v2:eb4a4e4549e044d4",
+          "hash": "v2:97d800fedf663959",
+          "seen": 2
+        },
+        "frmVideo.frmVideo_deactivate": {
+          "hash": "v2:7ae78039a2f7ec00",
+          "seen": 1
+        },
+        "frmVideo.frmVideo_key_down": {
+          "hash": "v2:f9da798ea63b47f0",
+          "seen": 3
+        },
+        "frmVideo.frmVideo_key_up": {
+          "hash": "v2:712427c50911d675",
+          "seen": 1
+        },
+        "frmVideo.frmVideo_resize_end": {
+          "hash": "v2:2db2bd058c5c48fd",
+          "seen": 1
+        },
+        "frmVideo.frmVideo_scale_change": {
+          "hash": "v2:23deb3a5c588df27",
           "seen": 1
         },
         "frmVideo.frmVideo_show": {
           "hash": "v2:6f5fc5e97f4e6857",
           "seen": 1
         },
-        "frmVideo.tmrVideo_timer": {
-          "hash": "v2:5acca0ab94abe8dc",
+        "frmVideo.frmVideo_window_created": {
+          "hash": "v2:f3ab0c9c4b1d830c",
           "seen": 1
+        },
+        "frmVideo.fvTela_pointer_down": {
+          "hash": "v2:b0b64ea81c412d5c",
+          "seen": 1
+        },
+        "frmVideo.fvTela_pointer_enter": {
+          "hash": "v2:c4eb0109c5c7b56f",
+          "seen": 1
+        },
+        "frmVideo.fvTela_pointer_leave": {
+          "hash": "v2:2566babfdc635d4a",
+          "seen": 1
+        },
+        "frmVideo.fvTela_pointer_move": {
+          "hash": "v2:aa5cba4914e48a99",
+          "seen": 1
+        },
+        "frmVideo.fvTela_pointer_up": {
+          "hash": "v2:0e6c8a1ebd1a5caf",
+          "seen": 1
+        },
+        "frmVideo.fvTela_wheel": {
+          "hash": "v2:9012edeee4b56d6d",
+          "seen": 1
+        },
+        "frmVideo.tmrVideo_timer": {
+          "hash": "v2:1427bd3e80ce9dd1",
+          "seen": 3
         }
       }
     }
@@ -74,6 +152,7 @@
     "frmVideo",
     "fvTela",
     "imgCursor",
+    "kcTeclado",
     "lblClipboard",
     "lblConvite",
     "lblCor",

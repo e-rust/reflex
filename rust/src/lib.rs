@@ -26,13 +26,29 @@ mod video;
 mod admin;
 mod agent;
 mod cli;
-mod config_pipe;
 mod hoststore;
 mod identity_store;
+// A tecla física no Linux (host e viewer); o Windows usa o scancode direto.
+#[cfg_attr(windows, allow(dead_code))]
+mod keymap;
 mod logger;
 mod probe;
+
+// Instalar no Linux: o serviço do usuário no systemd.
+#[cfg(target_os = "linux")]
+mod install_linux;
+
+// Só do host do Windows: o serviço (sessão 0), o processo do usuário, o pipe
+// de configuração, a instalação e o monitor virtual.
+#[cfg(windows)]
+mod config_pipe;
+#[cfg(windows)]
+mod install;
+#[cfg(windows)]
 mod service;
+#[cfg(windows)]
 mod user;
+#[cfg(windows)]
 mod vdd;
 
 /// O que a IDE gera: as structs dos forms, o acesso tipado e o registro (e os arquivos

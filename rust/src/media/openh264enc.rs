@@ -18,13 +18,19 @@ use openh264::encoder::{self as oh, BitRate, Complexity, FrameRate, FrameType, I
 use openh264::formats::YUVSlices;
 use openh264::OpenH264API;
 use crate::proto::codec::Codec;
-use windows::Win32::Graphics::Direct3D11::{ID3D11Texture2D, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ};
 
 use crate::media::damage::Region;
 use crate::media::encode::{conversion_threads, parameter_sets, with_headers, EncodeTiming, EncodedPacket, EncoderConfig, VideoEncoder};
-use crate::media::gpu::Device;
-use crate::media::yuv::{bgra_to_i420, bgra_to_i420_par, nv12_to_i420, I420Planes};
+use crate::media::yuv::{bgra_to_i420, bgra_to_i420_par, I420Planes};
 use crate::media::{MediaError, Result};
+
+// O NV12 da placa (Windows com placa, mas sem encoder de hardware).
+#[cfg(windows)]
+use crate::media::gpu::Device;
+#[cfg(windows)]
+use crate::media::yuv::nv12_to_i420;
+#[cfg(windows)]
+use windows::Win32::Graphics::Direct3D11::{ID3D11Texture2D, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ};
 
 /// Nome do encoder (como os do libavcodec: `h264_amf`, `libx264`…).
 pub const BACKEND: &str = "openh264";
@@ -158,6 +164,7 @@ pub struct OpenH264Encoder {
     planes: Planes,
     /// Os planos já têm uma tela inteira convertida (aí basta o que mudou).
     filled: bool,
+    #[cfg(windows)]
     staging: Option<ID3D11Texture2D>,
     /// SPS/PPS do último keyframe (repostos se um keyframe vier sem).
     headers: Vec<u8>,
@@ -184,6 +191,7 @@ impl OpenH264Encoder {
             enc,
             planes: Planes::new(cfg.width as usize, cfg.height as usize),
             filled: false,
+            #[cfg(windows)]
             staging: None,
             headers: Vec::new(),
             frames: 0,
@@ -232,6 +240,7 @@ impl VideoEncoder for OpenH264Encoder {
 
     /// NV12 da GPU (máquina com placa, mas sem encoder de hardware): desce
     /// por uma textura de staging e vira I420.
+    #[cfg(windows)]
     fn encode(&mut self, dev: &Device, nv12: &ID3D11Texture2D, force_key: bool) -> Result<Vec<EncodedPacket>> {
         let started = Instant::now();
         if self.staging.is_none() {

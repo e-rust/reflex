@@ -13,7 +13,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HANDLE, HGLOBAL, HWND, LPARAM, LRESULT, WPARAM};
-use crate::proto::msg::{ClipFormatId, ClipItem, ClipboardOffer};
+use crate::proto::msg::{ClipFormatId, ClipItem};
 use windows::Win32::Graphics::Gdi::{GetEnhMetaFileBits, SetEnhMetaFileBits, HENHMETAFILE};
 use windows::Win32::System::DataExchange::{
     AddClipboardFormatListener, CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardFormatNameW, GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW,
@@ -30,63 +30,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLIPBOARDUPDATE, WM_CLOSE, WM_DESTROY, WM_TIMER, WNDCLASSW,
 };
 
-/// Acima disso uma cópia não é sincronizada (imagem 4K sem compressão ~33 MB).
-pub const MAX_CLIP_BYTES: usize = 16 * 1024 * 1024;
-
-/// O que o clipboard tem agora (resumo pra oferta).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ClipboardContent {
-    Empty,
-    Text(String),
-    Files(Vec<std::path::PathBuf>),
-}
-
-/// Uma cópia: os formatos que viajam, com o conteúdo de cada um.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ClipSnapshot {
-    pub items: Vec<ClipItem>,
-    /// Arquivos/pastas copiados aqui (`CF_HDROP`). Só os nomes vão na oferta;
-    /// o conteúdo é servido por [`crate::platform::files::serve`] quando o outro cola.
-    pub files: Vec<std::path::PathBuf>,
-}
-
-impl ClipSnapshot {
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty() && self.files.is_empty()
-    }
-
-    /// Tamanho em bytes. Pura.
-    pub fn size(&self) -> usize {
-        self.items.iter().map(|i| i.data.len()).sum()
-    }
-
-    /// Tem algo e cabe no limite de sincronização. Pura.
-    pub fn fits(&self) -> bool {
-        !self.is_empty() && self.size() <= MAX_CLIP_BYTES
-    }
-
-    /// Só texto (testes, probe).
-    pub fn text(text: &str) -> Self {
-        let data = text.encode_utf16().chain(std::iter::once(0)).flat_map(u16::to_le_bytes).collect();
-        Self { items: vec![ClipItem { format: ClipFormatId::Standard(CF_UNICODETEXT.0 as u32), data }], files: Vec::new() }
-    }
-
-    /// O texto Unicode da cópia, se houver.
-    pub fn as_text(&self) -> Option<String> {
-        self.items.iter().find(|i| i.format == ClipFormatId::Standard(CF_UNICODETEXT.0 as u32)).map(|i| utf16_text(&i.data))
-    }
-
-    /// Vira a oferta pro outro lado. Pura.
-    pub fn to_offer(&self, seq: u64) -> ClipboardOffer {
-        let files = self.files.iter().filter_map(|f| f.file_name()).map(|n| n.to_string_lossy().into_owned()).collect();
-        ClipboardOffer { seq, items: self.items.clone(), files }
-    }
-
-    /// O que veio do outro lado. Pura.
-    pub fn from_offer(offer: &ClipboardOffer) -> Self {
-        Self { items: offer.items.clone(), files: Vec::new() }
-    }
-}
+pub use crate::platform::clip::{ClipSnapshot, ClipboardContent, MAX_CLIP_BYTES, utf16_text};
 
 /// O que fazer com um formato do clipboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,12 +133,6 @@ unsafe fn global_bytes(h: HANDLE) -> Option<Vec<u8>> {
         let _ = GlobalUnlock(g);
         Some(bytes)
     }
-}
-
-/// Texto UTF-16 (até o primeiro zero) em bytes → String. Pura.
-pub fn utf16_text(bytes: &[u8]) -> String {
-    let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|&c| u16::from_le_bytes(c)).take_while(|&u| u != 0).collect();
-    String::from_utf16_lossy(&units)
 }
 
 /// Lê todos os formatos que viajam ([`carry`]), até [`MAX_CLIP_BYTES`] no

@@ -91,20 +91,7 @@ pub fn monitors() -> Vec<Monitor> {
     outputs().map(|o| o.into_iter().map(|o| o.info).collect()).unwrap_or_default()
 }
 
-/// O que veio num `acquire`.
-#[derive(Default)]
-pub struct FrameInfo {
-    /// A imagem mudou (já está em [`ScreenCapture::image`]).
-    pub new_image: bool,
-    /// Posição do cursor relativa ao monitor, se mudou.
-    pub cursor_pos: Option<(i32, i32, bool)>,
-    /// Forma nova do cursor, se mudou.
-    pub cursor_shape: Option<RawCursorShape>,
-    /// O que a imagem nova mudou (`None` = não se sabe: tudo).
-    pub dirty: Option<Vec<crate::media::damage::Region>>,
-    /// Dessa área, quanto só mudou de lugar (os *move rects*: rolagem, arrasto).
-    pub moved_px: u64,
-}
+pub use crate::media::frame_info::FrameInfo;
 
 /// Duplicação de um monitor.
 pub struct ScreenCapture {

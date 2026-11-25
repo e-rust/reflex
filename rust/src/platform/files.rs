@@ -366,7 +366,8 @@ mod tests {
 
     #[test]
     fn top_names_are_the_copied_items() {
-        let o = FileOffer::new(1, vec![PathBuf::from(r"C:\x\Relatório.pdf"), PathBuf::from(r"C:\y\Pasta")]);
+        let base = std::env::temp_dir();
+        let o = FileOffer::new(1, vec![base.join("x").join("Relatório.pdf"), base.join("y").join("Pasta")]);
         assert_eq!(o.top_names(), vec!["Relatório.pdf".to_string(), "Pasta".to_string()]);
     }
 

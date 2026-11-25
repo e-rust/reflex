@@ -8,6 +8,7 @@ pub struct FrmVideo {
     pub fvTela: FrameView,
     pub imgCursor: Image,
     pub tmrVideo: Timer,
+    pub kcTeclado: KeyboardCapture,
     pub data: super::video::Data,
 }
 
@@ -20,6 +21,7 @@ pub struct FrmVideoComponents {
     pub fvTela: FrameView,
     pub imgCursor: Image,
     pub tmrVideo: Timer,
+    pub kcTeclado: KeyboardCapture,
 }
 
 impl std::ops::Deref for FrmVideo {
@@ -41,6 +43,7 @@ impl FrmVideo {
             fvTela: FrameView { id: handles::resolve(ui, root, "fvTela", "FrameView", &mut problems) },
             imgCursor: Image { id: handles::resolve(ui, root, "imgCursor", "Image", &mut problems) },
             tmrVideo: Timer { id: handles::resolve(ui, root, "tmrVideo", "Timer", &mut problems) },
+            kcTeclado: KeyboardCapture { id: handles::resolve(ui, root, "kcTeclado", "KeyboardCapture", &mut problems) },
             data: Default::default(),
         };
         if !problems.is_empty() {
@@ -52,12 +55,14 @@ impl FrmVideo {
             fvTela: instance.fvTela,
             imgCursor: instance.imgCursor,
             tmrVideo: instance.tmrVideo,
+            kcTeclado: instance.kcTeclado,
         }));
         Ok(Box::new(instance))
     }
 
     /// Os componentes do frmVideo aberto (o primeiro, se houver dois), sem o estado: valem
-    /// também enquanto um handler dele roda, quando o `get` dá `None`.
+    /// também enquanto um handler dele roda, quando o `get` dá `None`. É o caminho no
+    /// código que um handler do próprio frmVideo chama (no handler mesmo, o `self`).
     pub fn components(ui: &Ui) -> Option<FrmVideoComponents> {
         ui.form_components(ui.find_path("frmVideo")?)
     }
@@ -92,6 +97,10 @@ impl FrmVideo {
     }
 
     /// O frmVideo aberto (o primeiro, se houver dois), para outro form ler ou mexer nele.
+    ///
+    /// Dentro de um handler do próprio frmVideo, dá `None`: a instância está emprestada ao
+    /// handler que roda. Ali, use o `self` do handler ou, no código chamado por ele,
+    /// [`components`](Self::components) (em debug, o `None` por empréstimo avisa no stderr).
     pub fn get(ui: &Ui) -> Option<&FrmVideo> {
         ui.form_instance(ui.find_path("frmVideo")?)
     }
@@ -125,6 +134,19 @@ impl FrmVideo {
     /// O Image que disparou o evento (`None` se o `sender` não é um Image deste form).
     pub fn sender_as_image(&self, ui: &Ui, sender: ComponentId) -> Option<Image> {
         self.find_image(ui.name(sender)?)
+    }
+
+    /// O KeyboardCapture deste form com o nome (`None` se não há um KeyboardCapture com ele).
+    pub fn find_keyboard_capture(&self, name: &str) -> Option<KeyboardCapture> {
+        match name {
+            "kcTeclado" => Some(self.kcTeclado),
+            _ => None,
+        }
+    }
+
+    /// O KeyboardCapture que disparou o evento (`None` se o `sender` não é um KeyboardCapture deste form).
+    pub fn sender_as_keyboard_capture(&self, ui: &Ui, sender: ComponentId) -> Option<KeyboardCapture> {
+        self.find_keyboard_capture(ui.name(sender)?)
     }
 
     /// O Layout deste form com o nome (`None` se não há um Layout com ele).
